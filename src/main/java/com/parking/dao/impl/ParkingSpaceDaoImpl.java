@@ -8,7 +8,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
@@ -19,27 +18,32 @@ import java.util.List;
 public class ParkingSpaceDaoImpl implements ParkingSpaceDao {
     @Override
     public long insert(ParkingSpace space) throws SQLException {
-        String sql = """
-                INSERT INTO ParkingSpaces(lot_id, owner_id, space_number, type, status, share_start_time, share_end_time)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+        String insertSql = """
+                INSERT INTO ParkingSpaces(space_id, lot_id, owner_id, space_number, type, status, share_start_time, share_end_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """;
-        try (Connection conn = DbUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            ps.setLong(1, space.getLotId());
-            ps.setLong(2, space.getOwnerId());
-            ps.setString(3, space.getSpaceNumber());
-            ps.setString(4, space.getType());
-            ps.setString(5, space.getStatus());
-            ps.setTime(6, space.getShareStartTime() == null ? null : Time.valueOf(space.getShareStartTime()));
-            ps.setTime(7, space.getShareEndTime() == null ? null : Time.valueOf(space.getShareEndTime()));
-            ps.executeUpdate();
-            try (ResultSet rs = ps.getGeneratedKeys()) {
-                if (rs.next()) {
-                    return rs.getLong(1);
+        try (Connection conn = DbUtil.getConnection()) {
+            for (int i = 0; i < 5; i++) {
+                long nextId = findReusableId(conn);
+                try (PreparedStatement ps = conn.prepareStatement(insertSql)) {
+                    ps.setLong(1, nextId);
+                    ps.setLong(2, space.getLotId());
+                    ps.setLong(3, space.getOwnerId());
+                    ps.setString(4, space.getSpaceNumber());
+                    ps.setString(5, space.getType());
+                    ps.setString(6, space.getStatus());
+                    ps.setTime(7, space.getShareStartTime() == null ? null : Time.valueOf(space.getShareStartTime()));
+                    ps.setTime(8, space.getShareEndTime() == null ? null : Time.valueOf(space.getShareEndTime()));
+                    ps.executeUpdate();
+                    return nextId;
+                } catch (SQLException ex) {
+                    if (!isDuplicateKey(ex)) {
+                        throw ex;
+                    }
                 }
             }
         }
-        throw new SQLException("新增车位失败");
+        throw new SQLException("Insert parking space failed");
     }
 
     @Override
@@ -239,6 +243,34 @@ public class ParkingSpaceDaoImpl implements ParkingSpaceDao {
             }
         }
         return null;
+    }
+
+    private long findReusableId(Connection conn) throws SQLException {
+        String sql = """
+                SELECT MIN(t.candidate_id) AS next_id
+                FROM (
+                    SELECT 1 AS candidate_id
+                    UNION ALL
+                    SELECT space_id + 1 AS candidate_id
+                    FROM ParkingSpaces
+                ) t
+                LEFT JOIN ParkingSpaces p ON p.space_id = t.candidate_id
+                WHERE p.space_id IS NULL
+                """;
+        try (PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) {
+                long id = rs.getLong("next_id");
+                if (id > 0) {
+                    return id;
+                }
+            }
+        }
+        return 1L;
+    }
+
+    private boolean isDuplicateKey(SQLException ex) {
+        return "23000".equals(ex.getSQLState()) || ex.getErrorCode() == 1062;
     }
 
     private ParkingSpace mapRow(ResultSet rs) throws SQLException {

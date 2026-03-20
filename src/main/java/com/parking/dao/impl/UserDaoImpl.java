@@ -4,37 +4,46 @@ import com.parking.config.DbUtil;
 import com.parking.dao.UserDao;
 import com.parking.entity.User;
 
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 
 public class UserDaoImpl implements UserDao {
     private static final long PROTECTED_ADMIN_ID = 1L;
+
+    private static final String USER_BASE_SELECT = """
+            SELECT user_id, username, password, real_name, phone, role, status, create_time
+            FROM Users
+            """;
+
     @Override
     public User findByUsername(String username) throws SQLException {
-        String sql = """
-                SELECT user_id, username, password, real_name, phone, role, status, create_time
-                FROM Users
-                WHERE username = ?
-                """;
+        String sql = USER_BASE_SELECT + " WHERE BINARY username = ? ";
         try (Connection conn = DbUtil.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, username);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    User user = new User();
-                    user.setUserId(rs.getLong("user_id"));
-                    user.setUsername(rs.getString("username"));
-                    user.setPassword(rs.getString("password"));
-                    user.setRealName(rs.getString("real_name"));
-                    user.setPhone(rs.getString("phone"));
-                    user.setRole(rs.getString("role"));
-                    user.setStatus(rs.getInt("status"));
-                    Timestamp ts = rs.getTimestamp("create_time");
-                    if (ts != null) {
-                        user.setCreateTime(ts.toLocalDateTime());
-                    }
-                    return user;
+                    return mapUser(rs);
+                }
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public User findById(Long userId) throws SQLException {
+        String sql = USER_BASE_SELECT + " WHERE user_id = ? ";
+        try (Connection conn = DbUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, userId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return mapUser(rs);
                 }
             }
         }
@@ -43,25 +52,30 @@ public class UserDaoImpl implements UserDao {
 
     @Override
     public long insert(User user) throws SQLException {
-        String sql = """
-                INSERT INTO Users(username, password, real_name, phone, role, status)
-                VALUES (?, ?, ?, ?, ?, 1)
+        String insertSql = """
+                INSERT INTO Users(user_id, username, password, real_name, phone, role, status)
+                VALUES (?, ?, ?, ?, ?, ?, 1)
                 """;
-        try (Connection conn = DbUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            ps.setString(1, user.getUsername());
-            ps.setString(2, user.getPassword());
-            ps.setString(3, user.getRealName());
-            ps.setString(4, user.getPhone());
-            ps.setString(5, user.getRole());
-            ps.executeUpdate();
-            try (ResultSet rs = ps.getGeneratedKeys()) {
-                if (rs.next()) {
-                    return rs.getLong(1);
+        try (Connection conn = DbUtil.getConnection()) {
+            for (int i = 0; i < 5; i++) {
+                long nextId = findReusableId(conn);
+                try (PreparedStatement ps = conn.prepareStatement(insertSql)) {
+                    ps.setLong(1, nextId);
+                    ps.setString(2, user.getUsername());
+                    ps.setString(3, user.getPassword());
+                    ps.setString(4, user.getRealName());
+                    ps.setString(5, user.getPhone());
+                    ps.setString(6, user.getRole());
+                    ps.executeUpdate();
+                    return nextId;
+                } catch (SQLException ex) {
+                    if (!isDuplicateKey(ex)) {
+                        throw ex;
+                    }
                 }
             }
         }
-        throw new SQLException("新增用户失败");
+        throw new SQLException("Insert user failed");
     }
 
     @Override
@@ -77,11 +91,7 @@ public class UserDaoImpl implements UserDao {
 
     @Override
     public List<User> search(String keyword, String role, Integer status, int pageNo, int pageSize) throws SQLException {
-        StringBuilder sql = new StringBuilder("""
-                SELECT user_id, username, password, real_name, phone, role, status, create_time
-                FROM Users
-                WHERE 1=1
-                """);
+        StringBuilder sql = new StringBuilder(USER_BASE_SELECT + " WHERE 1=1 ");
         List<Object> params = new ArrayList<>();
 
         if (keyword != null && !keyword.isBlank()) {
@@ -92,7 +102,6 @@ public class UserDaoImpl implements UserDao {
             params.add(kw);
             params.add(kw);
 
-            // Phone matching: only full 11 digits or the last 4 digits.
             if (k.matches("\\d{11}")) {
                 sql.append(" OR phone = ? ");
                 params.add(k);
@@ -124,19 +133,7 @@ public class UserDaoImpl implements UserDao {
             }
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    User user = new User();
-                    user.setUserId(rs.getLong("user_id"));
-                    user.setUsername(rs.getString("username"));
-                    user.setPassword(rs.getString("password"));
-                    user.setRealName(rs.getString("real_name"));
-                    user.setPhone(rs.getString("phone"));
-                    user.setRole(rs.getString("role"));
-                    user.setStatus(rs.getInt("status"));
-                    Timestamp ts = rs.getTimestamp("create_time");
-                    if (ts != null) {
-                        user.setCreateTime(ts.toLocalDateTime());
-                    }
-                    list.add(user);
+                    list.add(mapUser(rs));
                 }
             }
         }
@@ -232,5 +229,49 @@ public class UserDaoImpl implements UserDao {
             ps.setLong(2, PROTECTED_ADMIN_ID);
             return ps.executeUpdate();
         }
+    }
+
+    private User mapUser(ResultSet rs) throws SQLException {
+        User user = new User();
+        user.setUserId(rs.getLong("user_id"));
+        user.setUsername(rs.getString("username"));
+        user.setPassword(rs.getString("password"));
+        user.setRealName(rs.getString("real_name"));
+        user.setPhone(rs.getString("phone"));
+        user.setRole(rs.getString("role"));
+        user.setStatus(rs.getInt("status"));
+        Timestamp ts = rs.getTimestamp("create_time");
+        if (ts != null) {
+            user.setCreateTime(ts.toLocalDateTime());
+        }
+        return user;
+    }
+
+    private long findReusableId(Connection conn) throws SQLException {
+        String sql = """
+                SELECT MIN(t.candidate_id) AS next_id
+                FROM (
+                    SELECT 1 AS candidate_id
+                    UNION ALL
+                    SELECT user_id + 1 AS candidate_id
+                    FROM Users
+                ) t
+                LEFT JOIN Users u ON u.user_id = t.candidate_id
+                WHERE u.user_id IS NULL
+                """;
+        try (PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) {
+                long id = rs.getLong("next_id");
+                if (id > 0) {
+                    return id;
+                }
+            }
+        }
+        return 1L;
+    }
+
+    private boolean isDuplicateKey(SQLException ex) {
+        return "23000".equals(ex.getSQLState()) || ex.getErrorCode() == 1062;
     }
 }

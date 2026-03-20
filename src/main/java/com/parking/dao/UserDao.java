@@ -8,6 +8,8 @@ import java.util.List;
 public interface UserDao {
     User findByUsername(String username) throws SQLException;
 
+    User findById(Long userId) throws SQLException;
+
     long insert(User user) throws SQLException;
 
     int updatePassword(Long userId, String newPassword) throws SQLException;

@@ -8,22 +8,24 @@ import com.parking.service.ServiceException;
 
 import java.sql.SQLException;
 
-
-//登录、注册、改密
 public class AuthServiceImpl implements AuthService {
     private final UserDao userDao = new UserDaoImpl();
 
     @Override
     public User login(String username, String password) throws SQLException {
         if (username == null || username.isBlank() || password == null || password.isBlank()) {
-            throw new ServiceException("用户名和密码不能为空");
+            throw new ServiceException("Username and password are required");
         }
-        User user = userDao.findByUsername(username);
+        String account = username.trim();
+        User user = userDao.findByUsername(account);
+        if (user == null && account.matches("\\d+")) {
+            user = userDao.findById(Long.parseLong(account));
+        }
         if (user == null || user.getStatus() == null || user.getStatus() != 1) {
-            throw new ServiceException("用户不存在或已被禁用");
+            throw new ServiceException("User does not exist or is disabled");
         }
         if (!password.equals(user.getPassword())) {
-            throw new ServiceException("密码错误");
+            throw new ServiceException("Wrong password");
         }
         return user;
     }
@@ -31,16 +33,30 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public long register(User user) throws SQLException {
         if (user == null || user.getUsername() == null || user.getUsername().isBlank()) {
-            throw new ServiceException("用户名不能为空");
+            throw new ServiceException("Username is required");
         }
+        user.setUsername(user.getUsername().trim());
         if (user.getPassword() == null || user.getPassword().isBlank()) {
-            throw new ServiceException("密码不能为空");
+            throw new ServiceException("Password is required");
         }
+        user.setPassword(user.getPassword().trim());
         if (user.getRole() == null || user.getRole().isBlank()) {
-            throw new ServiceException("角色不能为空");
+            throw new ServiceException("Role is required");
         }
-        if (userDao.findByUsername(user.getUsername()) != null) {
-            throw new ServiceException("用户名已存在");
+        if (user.getRealName() == null || user.getRealName().isBlank()) {
+            throw new ServiceException("Real name is required");
+        }
+        user.setRealName(user.getRealName().trim());
+        if (user.getPhone() == null || user.getPhone().isBlank()) {
+            throw new ServiceException("Phone is required");
+        }
+        user.setPhone(user.getPhone().trim());
+        if (!user.getPhone().matches("\\d{11}")) {
+            throw new ServiceException("Phone must be 11 digits");
+        }
+        User existed = userDao.findByUsername(user.getUsername());
+        if (existed != null) {
+            throw new ServiceException("Username already exists: " + existed.getUsername() + " (id=" + existed.getUserId() + ")");
         }
         return userDao.insert(user);
     }
@@ -48,17 +64,16 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public void changePassword(Long userId, String oldPassword, String newPassword) throws SQLException {
         if (userId == null) {
-            throw new ServiceException("用户ID不能为空");
+            throw new ServiceException("User id is required");
         }
         if (newPassword == null || newPassword.isBlank()) {
-            throw new ServiceException("新密码不能为空");
+            throw new ServiceException("New password is required");
         }
-        // Minimal template implementation: oldPassword check can be expanded with current session context.
         if (oldPassword == null || oldPassword.isBlank()) {
-            throw new ServiceException("旧密码不能为空");
+            throw new ServiceException("Old password is required");
         }
         if (userDao.updatePassword(userId, newPassword) == 0) {
-            throw new ServiceException("用户不存在");
+            throw new ServiceException("User not found");
         }
     }
 }

@@ -8,7 +8,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,19 +26,7 @@ public class PricingRuleDaoImpl implements PricingRuleDao {
             ps.setString(1, spaceType);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    PricingRule rule = new PricingRule();
-                    rule.setRuleId(rs.getLong("rule_id"));
-                    rule.setRuleName(rs.getString("rule_name"));
-                    rule.setChargeType(rs.getString("charge_type"));
-                    rule.setUnitPrice(rs.getBigDecimal("unit_price"));
-                    int unitTime = rs.getInt("unit_time");
-                    if (!rs.wasNull()) {
-                        rule.setUnitTime(unitTime);
-                    }
-                    rule.setFixedPrice(rs.getBigDecimal("fixed_price"));
-                    rule.setApplicableSpaceType(rs.getString("applicable_space_type"));
-                    rule.setStatus(rs.getInt("status"));
-                    return rule;
+                    return mapRule(rs);
                 }
             }
         }
@@ -48,21 +35,26 @@ public class PricingRuleDaoImpl implements PricingRuleDao {
 
     @Override
     public long insert(PricingRule rule) throws SQLException {
-        String sql = """
-                INSERT INTO PricingRules(rule_name, charge_type, unit_price, unit_time, fixed_price, applicable_space_type, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+        String insertSql = """
+                INSERT INTO PricingRules(rule_id, rule_name, charge_type, unit_price, unit_time, fixed_price, applicable_space_type, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """;
-        try (Connection conn = DbUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            fillRuleParams(ps, rule);
-            ps.executeUpdate();
-            try (ResultSet rs = ps.getGeneratedKeys()) {
-                if (rs.next()) {
-                    return rs.getLong(1);
+        try (Connection conn = DbUtil.getConnection()) {
+            for (int i = 0; i < 5; i++) {
+                long nextId = findReusableId(conn);
+                try (PreparedStatement ps = conn.prepareStatement(insertSql)) {
+                    ps.setLong(1, nextId);
+                    fillRuleParams(ps, rule, 2);
+                    ps.executeUpdate();
+                    return nextId;
+                } catch (SQLException ex) {
+                    if (!isDuplicateKey(ex)) {
+                        throw ex;
+                    }
                 }
             }
         }
-        throw new SQLException("新增计费规则失败");
+        throw new SQLException("Insert pricing rule failed");
     }
 
     @Override
@@ -74,7 +66,7 @@ public class PricingRuleDaoImpl implements PricingRuleDao {
                 """;
         try (Connection conn = DbUtil.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
-            fillRuleParams(ps, rule);
+            fillRuleParams(ps, rule, 1);
             ps.setLong(8, rule.getRuleId());
             return ps.executeUpdate();
         }
@@ -98,10 +90,10 @@ public class PricingRuleDaoImpl implements PricingRuleDao {
                 WHERE 1=1
                 """);
         List<Object> params = new ArrayList<>();
+
         if (keyword != null && !keyword.isBlank()) {
             String k = keyword.trim();
             String like = "%" + k + "%";
-            // 查询规则：支持“规则名称模糊查询”；当关键字为纯数字时，额外支持按规则ID精确查询。
             sql.append(" AND (rule_name LIKE ? OR CAST(rule_id AS CHAR) LIKE ? ");
             params.add(like);
             params.add(like);
@@ -119,6 +111,7 @@ public class PricingRuleDaoImpl implements PricingRuleDao {
             sql.append(" AND status = ? ");
             params.add(status);
         }
+
         sql.append(" ORDER BY rule_id DESC LIMIT ? OFFSET ? ");
         params.add(pageSize);
         params.add((pageNo - 1) * pageSize);
@@ -154,13 +147,41 @@ public class PricingRuleDaoImpl implements PricingRuleDao {
         return rule;
     }
 
-    private void fillRuleParams(PreparedStatement ps, PricingRule rule) throws SQLException {
-        ps.setString(1, rule.getRuleName());
-        ps.setString(2, rule.getChargeType());
-        ps.setBigDecimal(3, rule.getUnitPrice());
-        ps.setObject(4, rule.getUnitTime());
-        ps.setBigDecimal(5, rule.getFixedPrice());
-        ps.setString(6, rule.getApplicableSpaceType());
-        ps.setObject(7, rule.getStatus() == null ? 1 : rule.getStatus());
+    private void fillRuleParams(PreparedStatement ps, PricingRule rule, int startIndex) throws SQLException {
+        ps.setString(startIndex, rule.getRuleName());
+        ps.setString(startIndex + 1, rule.getChargeType());
+        ps.setBigDecimal(startIndex + 2, rule.getUnitPrice());
+        ps.setObject(startIndex + 3, rule.getUnitTime());
+        ps.setBigDecimal(startIndex + 4, rule.getFixedPrice());
+        ps.setString(startIndex + 5, rule.getApplicableSpaceType());
+        ps.setObject(startIndex + 6, rule.getStatus() == null ? 1 : rule.getStatus());
+    }
+
+    private long findReusableId(Connection conn) throws SQLException {
+        String sql = """
+                SELECT MIN(t.candidate_id) AS next_id
+                FROM (
+                    SELECT 1 AS candidate_id
+                    UNION ALL
+                    SELECT rule_id + 1 AS candidate_id
+                    FROM PricingRules
+                ) t
+                LEFT JOIN PricingRules r ON r.rule_id = t.candidate_id
+                WHERE r.rule_id IS NULL
+                """;
+        try (PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) {
+                long id = rs.getLong("next_id");
+                if (id > 0) {
+                    return id;
+                }
+            }
+        }
+        return 1L;
+    }
+
+    private boolean isDuplicateKey(SQLException ex) {
+        return "23000".equals(ex.getSQLState()) || ex.getErrorCode() == 1062;
     }
 }
