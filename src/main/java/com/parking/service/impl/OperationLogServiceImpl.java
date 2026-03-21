@@ -22,7 +22,12 @@ public class OperationLogServiceImpl implements OperationLogService {
     }
 
     @Override
-    public List<Map<String, Object>> queryLogs(String keyword, int pageNo, int pageSize) throws SQLException {
-        return operationLogDao.queryLogs(keyword, pageNo, pageSize);
+    public List<Map<String, Object>> queryLogs(String keyword, String category, int pageNo, int pageSize) throws SQLException {
+        return operationLogDao.queryLogs(keyword, category, pageNo, pageSize);
+    }
+
+    @Override
+    public int clearLogs(String category) throws SQLException {
+        return operationLogDao.clearLogs(category);
     }
 }

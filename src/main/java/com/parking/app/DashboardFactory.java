@@ -471,6 +471,10 @@ public class DashboardFactory {
             reload.run();
         });
         Button addUser = new Button("\u65b0\u589e\u7528\u6237"); // 新增用户
+        Runnable resetManageForm = () -> {
+            userId.clear();
+            newPwd.clear();
+        };
         addUser.setOnAction(e -> {
             try {
                 User nu = new User();
@@ -494,11 +498,17 @@ public class DashboardFactory {
             }
         });
         Button disable = new Button("\u7981\u7528"); // 禁用
-        disable.setOnAction(e -> run(() -> userAdminService.changeStatus(requireLong(userId, "\u7528\u6237ID"), 0), out, reload)); // 用户ID
+        disable.setOnAction(e -> run(() -> userAdminService.changeStatus(requireLong(userId, "\u7528\u6237ID"), 0), out, () -> {
+            resetManageForm.run();
+            reload.run();
+        })); // 用户ID
         Button enable = new Button("\u542f\u7528"); // 启用
-        enable.setOnAction(e -> run(() -> userAdminService.changeStatus(requireLong(userId, "\u7528\u6237ID"), 1), out, reload)); // 用户ID
+        enable.setOnAction(e -> run(() -> userAdminService.changeStatus(requireLong(userId, "\u7528\u6237ID"), 1), out, () -> {
+            resetManageForm.run();
+            reload.run();
+        })); // 用户ID
         Button reset = new Button("\u91cd\u7f6e\u5bc6\u7801"); // 重置密码
-        reset.setOnAction(e -> run(() -> userAdminService.resetPassword(requireLong(userId, "\u7528\u6237ID"), newPwd.getText().trim()), out, null)); // 用户ID
+        reset.setOnAction(e -> run(() -> userAdminService.resetPassword(requireLong(userId, "\u7528\u6237ID"), newPwd.getText().trim()), out, resetManageForm)); // 用户ID
         Button deleteUser = new Button("\u5220\u9664\u7528\u6237"); // 删除用户
         deleteUser.setOnAction(e -> {
             try {
@@ -512,6 +522,7 @@ public class DashboardFactory {
                 userAdminService.deleteUser(uid);
                 out.appendText("\u5220\u9664\u6210\u529f\n"); // 删除成功\\n
                 addOperationLog("\u7528\u6237\u7ba1\u7406", "\u5220\u9664\u7528\u6237ID=" + uid); // 用户管理 | 删除用户ID=
+                resetManageForm.run();
 
                 reload.run();
             } catch (Exception ex) {
@@ -632,25 +643,45 @@ public class DashboardFactory {
         Label queryHint = new Label("\u8bf4\u660e\uff1a\u8f93\u5165\u5173\u952e\u5b57\u53ef\u6a21\u7cca\u67e5\u8be2\uff1b\u82e5\u9700\u67e5\u8be2\u5168\u90e8\uff0c\u8bf7\u5c06\u5173\u952e\u5b57\u7559\u7a7a\u540e\u70b9\u51fb\u201c\u67e5\u8be2\u201d\u3002"); // 说明：输入关键字可模糊查询；若需查询全部，请将关键字留空后点击“查询”。
 
         Button add = new Button("\u65b0\u589e"); // 新增
+        Runnable resetLotAddForm = () -> {
+            addName.clear();
+            addAddress.clear();
+            addTotal.clear();
+            addDesc.clear();
+            addOpen.clear();
+            addClose.clear();
+        };
+        Runnable resetLotEditForm = () -> {
+            editId.clear();
+            editName.clear();
+            editAddress.clear();
+            editTotal.clear();
+            editDesc.clear();
+            editOpen.clear();
+            editClose.clear();
+        };
         add.setOnAction(e -> {
             try {
                 long newId = parkingLotService.addLot(lotFrom(editId, addName, addAddress, addTotal, addOpen, addClose, addDesc, false));
                 out.appendText("\u65b0\u589e\u6210\u529f\uff0c\u505c\u8f66\u573aID=" + newId + "\n"); // 新增成功，停车场ID=
                 addOperationLog("\u505c\u8f66\u573a\u7ba1\u7406", "\u65b0\u589e\u505c\u8f66\u573aID=" + newId); // 停车场管理 | 新增停车场ID=
-                addName.clear();
-                addAddress.clear();
-                addTotal.clear();
-                addDesc.clear();
-                addOpen.setText("08:00");
-                addClose.setText("22:00");
+                resetLotAddForm.run();
             } catch (Exception ex) {
                 out.appendText(formatError(ex) + "\n");
             }
         });
         Button update = new Button("\u4fee\u6539"); // 修改
-        update.setOnAction(e -> run(() -> parkingLotService.updateLot(lotFrom(editId, editName, editAddress, editTotal, editOpen, editClose, editDesc, true)), out, null));
+        update.setOnAction(e -> run(
+                () -> parkingLotService.updateLot(lotFrom(editId, editName, editAddress, editTotal, editOpen, editClose, editDesc, true)),
+                out,
+                resetLotEditForm
+        ));
         Button delete = new Button("\u5220\u9664"); // 删除
-        delete.setOnAction(e -> run(() -> parkingLotService.removeLot(requireLong(editId, "ID")), out, null));
+        delete.setOnAction(e -> run(
+                () -> parkingLotService.removeLot(requireLong(editId, "ID")),
+                out,
+                resetLotEditForm
+        ));
 
         FlowPane addRow = new FlowPane(8, 8, addName, addAddress, addTotal, addOpen, addClose, addDesc, add);
         addRow.setPrefWrapLength(1200);
@@ -962,27 +993,54 @@ public class DashboardFactory {
         query.setOnAction(e -> reload.run());
 
         Button add = new Button("\u65b0\u589e"); // 新增
+        Runnable resetRuleAddForm = () -> {
+            addName.clear();
+            addUnitPrice.clear();
+            addUnitTime.clear();
+            addFixedPrice.clear();
+            addChargeType.setValue("\u6309\u65f6\u8ba1\u8d39"); // 按时计费
+            addSpaceType.setValue("\u5730\u4e0a"); // 地上
+            addStatus.setValue("\u542f\u7528"); // 启用
+        };
+        Runnable resetRuleEditForm = () -> {
+            editId.clear();
+            editName.clear();
+            editUnitPrice.clear();
+            editUnitTime.clear();
+            editFixedPrice.clear();
+            editChargeType.setValue("\u6309\u65f6\u8ba1\u8d39"); // 按时计费
+            editSpaceType.setValue("\u5730\u4e0a"); // 地上
+            editStatus.setValue("\u542f\u7528"); // 启用
+        };
         add.setOnAction(e -> {
             try {
                 long newId = pricingRuleService.addRule(ruleFrom(editId, addName, addChargeType, addUnitPrice, addUnitTime, addFixedPrice, addSpaceType, addStatus, false));
                 out.appendText("\u65b0\u589e\u6210\u529f\uff0c\u89c4\u5219ID=" + newId + "\n"); // 新增成功，规则ID=
                 addOperationLog("\u8ba1\u8d39\u89c4\u5219", "\u65b0\u589e\u8ba1\u8d39\u89c4\u5219ID=" + newId); // 计费规则 | 新增计费规则ID=
-                addName.clear();
-                addUnitPrice.clear();
-                addUnitTime.clear();
-                addFixedPrice.clear();
-                addChargeType.setValue("\u6309\u65f6\u8ba1\u8d39"); // 按时计费
-                addSpaceType.setValue("\u5730\u4e0a"); // 地上
-                addStatus.setValue("\u542f\u7528"); // 启用
+                resetRuleAddForm.run();
                 reload.run();
             } catch (Exception ex) {
                 out.appendText(formatError(ex) + "\n");
             }
         });
         Button update = new Button("\u4fee\u6539"); // 修改
-        update.setOnAction(e -> run(() -> pricingRuleService.updateRule(ruleFrom(editId, editName, editChargeType, editUnitPrice, editUnitTime, editFixedPrice, editSpaceType, editStatus, true)), out, reload));
+        update.setOnAction(e -> run(
+                () -> pricingRuleService.updateRule(ruleFrom(editId, editName, editChargeType, editUnitPrice, editUnitTime, editFixedPrice, editSpaceType, editStatus, true)),
+                out,
+                () -> {
+                    resetRuleEditForm.run();
+                    reload.run();
+                }
+        ));
         Button delete = new Button("\u5220\u9664"); // 删除
-        delete.setOnAction(e -> run(() -> pricingRuleService.removeRule(requireLong(editId, "ID")), out, reload));
+        delete.setOnAction(e -> run(
+                () -> pricingRuleService.removeRule(requireLong(editId, "ID")),
+                out,
+                () -> {
+                    resetRuleEditForm.run();
+                    reload.run();
+                }
+        ));
 
         Label pricingHelp = new Label("\u8bf4\u660e\uff1a\u6309\u65f6\u8ba1\u8d39\u8bf7\u586b\u5199\u201c\u5355\u4ef7+\u5355\u4f4d\u65f6\u957f\u201d\uff1b\u6309\u6b21\u8ba1\u8d39\u8bf7\u586b\u5199\u201c\u56fa\u5b9a\u4ef7\u683c\u201d\u3002"); // 说明：按时计费请填写“单价+单位时长”；按次计费请填写“固定价格”。
         Label pricingQueryHint = new Label("\u67e5\u8be2\u8bf4\u660e\uff1a\u8f93\u5165\u89c4\u5219ID\u53ef\u6309ID\u67e5\u8be2\uff1b\u8f93\u5165\u540d\u79f0\u5173\u952e\u5b57\u53ef\u6a21\u7cca\u67e5\u8be2\uff1b\u7559\u7a7a\u67e5\u8be2\u5168\u90e8\u3002"); // 查询说明：输入规则ID可按ID查询；输入名称关键字可模糊查询；留空查询全部。
@@ -1032,7 +1090,14 @@ public class DashboardFactory {
         query.setOnAction(e -> reload.run());
 
         Button approve = new Button("\u5ba1\u6838\u7ed3\u7b97"); // 审核结算
-        approve.setOnAction(e -> run(() -> revenueService.settleRevenue(requireLong(revenueId, "\u7ed3\u7b97ID")), out, reload)); // 结算ID
+        approve.setOnAction(e -> run(
+                () -> revenueService.settleRevenue(requireLong(revenueId, "\u7ed3\u7b97ID")),
+                out,
+                () -> {
+                    revenueId.clear();
+                    reload.run();
+                }
+        )); // 结算ID
 
         Label queryHint = new Label("\u67e5\u8be2\u8bf4\u660e\uff1a\u53ef\u6309\u7ed3\u7b97\u72b6\u6001\u7b5b\u9009\uff0c\u70b9\u51fb\u201c\u67e5\u8be2\u7ed3\u7b97\u8bb0\u5f55\u201d\u540e\u5217\u51fa\u7ed3\u679c\u3002"); // 查询说明：可按结算状态筛选，点击“查询结算记录”后列出结果。
         VBox body = new VBox(10,
@@ -1075,6 +1140,9 @@ public class DashboardFactory {
         TextField keyword = new TextField();
         keyword.setPromptText("\u5173\u952e\u5b57\uff08\u65e5\u5fd7ID/\u7528\u6237ID/\u7528\u6237\u540d/\u64cd\u4f5c\u7c7b\u578b/\u64cd\u4f5c\u63cf\u8ff0\uff09"); // 关键字（日志ID/用户ID/用户名/操作类型/操作描述）
         keyword.setPrefWidth(420);
+        ComboBox<String> categoryBox = new ComboBox<>(FXCollections.observableArrayList("\u5168\u90e8", "\u65b0\u589e", "\u5220\u9664", "\u4fee\u6539")); // 全部 | 新增 | 删除 | 修改
+        categoryBox.setValue("\u5168\u90e8"); // 全部
+        categoryBox.setPrefWidth(110);
 
         TextArea out = new TextArea();
         out.setEditable(false);
@@ -1085,7 +1153,7 @@ public class DashboardFactory {
 
         Runnable reload = () -> {
             try {
-                List<Map<String, Object>> rows = operationLogService.queryLogs(keyword.getText(), pageNo[0], pageSize);
+                List<Map<String, Object>> rows = operationLogService.queryLogs(keyword.getText(), logCategoryCode(categoryBox.getValue()), pageNo[0], pageSize);
                 out.clear();
                 if (rows.isEmpty()) {
                     out.appendText("\u6682\u65e0\u64cd\u4f5c\u65e5\u5fd7\u8bb0\u5f55\n"); // 暂无操作日志记录
@@ -1118,9 +1186,28 @@ public class DashboardFactory {
             pageNo[0]++;
             reload.run();
         });
+        Button clearLogs = new Button("\u6e05\u7a7a\u65e5\u5fd7"); // 清空日志
+        clearLogs.setOnAction(e -> {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle("\u6e05\u7a7a\u65e5\u5fd7"); // 清空日志
+            confirm.setHeaderText("\u786e\u8ba4\u6e05\u7a7a\u65e5\u5fd7\u5417\uff1f"); // 确认清空日志吗？
+            confirm.setContentText("\u5f53\u524d\u5c06\u6309\u5206\u7c7b\u3010" + categoryBox.getValue() + "\u3011\u6e05\u7a7a\uff0c\u64cd\u4f5c\u4e0d\u53ef\u6062\u590d\u3002"); // 当前将按分类【】清空，操作不可恢复。
+            Optional<ButtonType> result = confirm.showAndWait();
+            if (result.isEmpty() || result.get() != ButtonType.OK) {
+                return;
+            }
+            try {
+                int cnt = operationLogService.clearLogs(logCategoryCode(categoryBox.getValue()));
+                out.appendText("\u6e05\u7a7a\u6210\u529f\uff0c\u5df2\u5220\u9664" + cnt + "\u6761\u65e5\u5fd7\n"); // 清空成功，已删除 | 条日志
+                pageNo[0] = 1;
+                reload.run();
+            } catch (Exception ex) {
+                out.appendText(formatError(ex) + "\n");
+            }
+        });
 
-        Label hint = new Label("\u8bf4\u660e\uff1a\u7ba1\u7406\u5458\u53ef\u6309\u5173\u952e\u5b57\u67e5\u770b\u64cd\u4f5c\u65e5\u5fd7\uff0c\u7528\u4e8e\u5ba1\u8ba1\u8ffd\u6eaf\u3002"); // 说明：管理员可按关键字查看操作日志，用于审计追溯。
-        HBox queryRow = new HBox(8, keyword, query);
+        Label hint = new Label("\u8bf4\u660e\uff1a\u53ef\u6309\u5173\u952e\u5b57\u548c\u5206\u7c7b\uff08\u5168\u90e8/\u65b0\u589e/\u5220\u9664/\u4fee\u6539\uff09\u7b5b\u9009\u65e5\u5fd7\uff0c\u201c\u6e05\u7a7a\u65e5\u5fd7\u201d\u6309\u5f53\u524d\u5206\u7c7b\u6267\u884c\u3002"); // 说明：可按关键字和分类（全部/新增/删除/修改）筛选日志，“清空日志”按当前分类执行。
+        HBox queryRow = new HBox(8, keyword, categoryBox, query, clearLogs);
         HBox.setHgrow(keyword, Priority.ALWAYS);
         HBox pageRow = new HBox(8, prev, next, pageInfo);
 
@@ -1520,6 +1607,13 @@ public class DashboardFactory {
         if ("\u5df2\u9884\u7ea6".equals(label)) return "RESERVED"; // 已预约
         if ("\u672a\u9884\u7ea6".equals(label)) return "NOT_RESERVED"; // 未预约
         return "";
+    }
+
+    private String logCategoryCode(String label) {
+        if ("\u65b0\u589e".equals(label)) return "ADD"; // 新增
+        if ("\u5220\u9664".equals(label)) return "DELETE"; // 删除
+        if ("\u4fee\u6539".equals(label)) return "UPDATE"; // 修改
+        return "ALL";
     }
 
     private String spaceTypeLabel(String code) {

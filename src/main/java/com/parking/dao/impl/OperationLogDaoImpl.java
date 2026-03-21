@@ -40,7 +40,7 @@ public class OperationLogDaoImpl implements OperationLogDao {
     }
 
     @Override
-    public List<Map<String, Object>> queryLogs(String keyword, int pageNo, int pageSize) throws SQLException {
+    public List<Map<String, Object>> queryLogs(String keyword, String category, int pageNo, int pageSize) throws SQLException {
         int safePageNo = Math.max(1, pageNo);
         int safePageSize = Math.max(1, pageSize);
         int offset = (safePageNo - 1) * safePageSize;
@@ -60,20 +60,24 @@ public class OperationLogDaoImpl implements OperationLogDao {
                 LEFT JOIN Users u ON u.user_id = l.user_id
                 """);
         List<Object> params = new ArrayList<>();
+        List<String> conditions = new ArrayList<>();
         if (hasKeyword) {
-            sql.append(" WHERE ");
             if (numericKeyword) {
-                sql.append(" (l.user_id = ? OR l.log_id = ?) ");
+                conditions.add("(l.user_id = ? OR l.log_id = ?)");
                 long v = Long.parseLong(kw);
                 params.add(v);
                 params.add(v);
             } else {
-                sql.append(" (u.username LIKE ? OR l.operation_type LIKE ? OR l.operation_desc LIKE ?) ");
+                conditions.add("(u.username LIKE ? OR l.operation_type LIKE ? OR l.operation_desc LIKE ?)");
                 String like = "%" + kw + "%";
                 params.add(like);
                 params.add(like);
                 params.add(like);
             }
+        }
+        appendCategoryCondition(conditions, params, category, true);
+        if (!conditions.isEmpty()) {
+            sql.append(" WHERE ").append(String.join(" AND ", conditions));
         }
         sql.append(" ORDER BY l.create_time DESC, l.log_id DESC LIMIT ? OFFSET ? ");
         params.add(safePageSize);
@@ -98,5 +102,56 @@ public class OperationLogDaoImpl implements OperationLogDao {
             }
         }
         return result;
+    }
+
+    @Override
+    public int clearLogs(String category) throws SQLException {
+        StringBuilder sql = new StringBuilder("DELETE FROM OperationLogs");
+        List<Object> params = new ArrayList<>();
+        List<String> conditions = new ArrayList<>();
+        appendCategoryCondition(conditions, params, category, false);
+        if (!conditions.isEmpty()) {
+            sql.append(" WHERE ").append(String.join(" AND ", conditions));
+        }
+        try (Connection conn = DbUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+            for (int i = 0; i < params.size(); i++) {
+                ps.setObject(i + 1, params.get(i));
+            }
+            return ps.executeUpdate();
+        }
+    }
+
+    private void appendCategoryCondition(List<String> conditions, List<Object> params, String category, boolean withAlias) {
+        String cat = category == null ? "" : category.trim().toUpperCase();
+        if (cat.isEmpty() || "ALL".equals(cat)) {
+            return;
+        }
+        String typeCol = withAlias ? "l.operation_type" : "operation_type";
+        String descCol = withAlias ? "l.operation_desc" : "operation_desc";
+
+        switch (cat) {
+            case "ADD":
+                conditions.add("(" + typeCol + " LIKE ? OR " + descCol + " LIKE ?)");
+                params.add("%新增%");
+                params.add("%新增%");
+                break;
+            case "DELETE":
+                conditions.add("(" + typeCol + " LIKE ? OR " + descCol + " LIKE ?)");
+                params.add("%删除%");
+                params.add("%删除%");
+                break;
+            case "UPDATE":
+                conditions.add("(" + typeCol + " LIKE ? OR " + descCol + " LIKE ? OR " + descCol + " LIKE ? OR " + descCol + " LIKE ? OR " + descCol + " LIKE ? OR " + descCol + " LIKE ?)");
+                params.add("%修改%");
+                params.add("%修改%");
+                params.add("%重置%");
+                params.add("%禁用%");
+                params.add("%启用%");
+                params.add("%审核%");
+                break;
+            default:
+                break;
+        }
     }
 }

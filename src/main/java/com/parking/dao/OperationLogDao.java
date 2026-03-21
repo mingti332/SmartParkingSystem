@@ -7,5 +7,7 @@ import java.util.Map;
 public interface OperationLogDao {
     long insert(Long userId, String operationType, String operationDesc) throws SQLException;
 
-    List<Map<String, Object>> queryLogs(String keyword, int pageNo, int pageSize) throws SQLException;
+    List<Map<String, Object>> queryLogs(String keyword, String category, int pageNo, int pageSize) throws SQLException;
+
+    int clearLogs(String category) throws SQLException;
 }
