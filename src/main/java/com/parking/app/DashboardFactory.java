@@ -29,7 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 
 
-//瑙掕壊鍒嗘祦
+//角色分流
 public class DashboardFactory {
 
     private static final DateTimeFormatter DT_SPACE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
@@ -136,9 +136,15 @@ public class DashboardFactory {
         ownerReservations.setOnAction(e -> {
             try {
                 List<Reservation> rows = reservationService.getOwnerReservations(user.getUserId(), 1, 30);
+<<<<<<< HEAD
                 out.appendText("\n\u3010\u540d\u4e0b\u9884\u7ea6\u3011\n"); // \\n【名下预约】\\n
                 if (rows.isEmpty()) {
                     out.appendText("\u6682\u65e0\u9884\u7ea6\u8bb0\u5f55\n\n"); // 暂无预约记录\\n\\n
+=======
+                out.appendText("\n\u3010\u540d\u4e0b\u9884\u7ea6\u3011\n"); // \n【名下预约】\n
+                if (rows.isEmpty()) {
+                    out.appendText("\u6682\u65e0\u9884\u7ea6\u8bb0\u5f55\n\n"); // 暂无预约记录\n\n
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
                     return;
                 }
                 for (Reservation r : rows) {
@@ -163,12 +169,20 @@ public class DashboardFactory {
         income.setOnAction(e -> {
             try {
                 List<Map<String, Object>> rows = revenueService.getOwnerIncomeDetail(user.getUserId(), 1, 30);
+<<<<<<< HEAD
                 out.appendText("\n\u3010\u6536\u76ca\u660e\u7ec6\u3011\n"); // \\n【收益明细】\\n
+=======
+                out.appendText("\n\u3010\u6536\u76ca\u660e\u7ec6\u3011\n"); // \n【收益明细】\n
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
                 for (Map<String, Object> row : rows) {
                     out.appendText(formatRowMap(row) + "\n");
                 }
                 BigDecimal total = revenueService.getOwnerIncomeTotal(user.getUserId());
+<<<<<<< HEAD
                 out.appendText("\u603b\u6536\u76ca=" + formatAmount(total) + "\n\n"); // 总收益=
+=======
+                out.appendText("\u603b\u6536\u76ca=" + formatAmount(total) + "\n\n"); // 总收益=\n\n
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
             } catch (Exception ex) {
                 out.appendText(formatError(ex) + "\n");
             }
@@ -441,7 +455,11 @@ public class DashboardFactory {
                     rows = userAdminService.queryUsers(keyword.getText(), roleCode, st, pageNo[0], pageSize);
                 }
                 table.setItems(FXCollections.observableArrayList(rows));
+<<<<<<< HEAD
                 pageInfo.setText("\u7b2c" + pageNo[0] + "\u9875\uff08\u6bcf\u9875" + pageSize + "\u6761\uff0c\u5f53\u524d" + rows.size() + "\u6761\uff09"); // 第 | 页（每页 | 条，当前 | 条）
+=======
+                pageInfo.setText("\u7b2c" + pageNo[0] + "\u9875\uff08\u6bcf\u9875" + pageSize + "\u6761\uff0c\u5f53\u524d" + rows.size() + "\u6761\uff09"); // 第x页（每页x条，当前x条）
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
             } catch (Exception ex) {
                 out.appendText(formatError(ex) + "\n");
             }
@@ -455,7 +473,11 @@ public class DashboardFactory {
         Button prevPage = new Button("\u4e0a\u4e00\u9875"); // 上一页
         prevPage.setOnAction(e -> {
             if (pageNo[0] <= 1) {
+<<<<<<< HEAD
                 out.appendText("\u63d0\u793a\uff1a\u5df2\u662f\u7b2c\u4e00\u9875\n"); // 提示：已是第一页\\n
+=======
+                out.appendText("\u63d0\u793a\uff1a\u5df2\u662f\u7b2c\u4e00\u9875\n"); // 提示：已是第一页
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
                 return;
             }
             pageNo[0]--;
@@ -464,17 +486,24 @@ public class DashboardFactory {
         Button nextPage = new Button("\u4e0b\u4e00\u9875"); // 下一页
         nextPage.setOnAction(e -> {
             if (table.getItems() == null || table.getItems().size() < pageSize) {
+<<<<<<< HEAD
                 out.appendText("\u63d0\u793a\uff1a\u5df2\u662f\u6700\u540e\u4e00\u9875\n"); // 提示：已是最后一页\\n
+=======
+                out.appendText("\u63d0\u793a\uff1a\u5df2\u662f\u6700\u540e\u4e00\u9875\n"); // 提示：已是最后一页
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
                 return;
             }
             pageNo[0]++;
             reload.run();
         });
         Button addUser = new Button("\u65b0\u589e\u7528\u6237"); // 新增用户
+<<<<<<< HEAD
         Runnable resetManageForm = () -> {
             userId.clear();
             newPwd.clear();
         };
+=======
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
         addUser.setOnAction(e -> {
             try {
                 User nu = new User();
@@ -485,7 +514,10 @@ public class DashboardFactory {
                 nu.setRole("\u8f66\u4f4d\u6240\u6709\u8005".equals(addRole.getValue()) ? "OWNER" : "CAR_OWNER"); // 车位所有者
                 long uid = userAdminService.createUser(nu);
                 out.appendText("\u65b0\u589e\u6210\u529f\uff0c\u7528\u6237ID\uff08\u81ea\u52a8\u751f\u6210\uff09=" + uid + "\n"); // 新增成功，用户ID（自动生成）=
+<<<<<<< HEAD
                 addOperationLog("\u7528\u6237\u7ba1\u7406", "\u65b0\u589e\u7528\u6237ID=" + uid); // 用户管理 | 新增用户ID=
+=======
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
                 addUsername.clear();
                 addPassword.clear();
                 addRealName.clear();
@@ -498,6 +530,7 @@ public class DashboardFactory {
             }
         });
         Button disable = new Button("\u7981\u7528"); // 禁用
+<<<<<<< HEAD
         disable.setOnAction(e -> run(() -> userAdminService.changeStatus(requireLong(userId, "\u7528\u6237ID"), 0), out, () -> {
             resetManageForm.run();
             reload.run();
@@ -509,6 +542,13 @@ public class DashboardFactory {
         })); // 用户ID
         Button reset = new Button("\u91cd\u7f6e\u5bc6\u7801"); // 重置密码
         reset.setOnAction(e -> run(() -> userAdminService.resetPassword(requireLong(userId, "\u7528\u6237ID"), newPwd.getText().trim()), out, resetManageForm)); // 用户ID
+=======
+        disable.setOnAction(e -> run(() -> userAdminService.changeStatus(requireLong(userId, "\u7528\u6237ID"), 0), out, reload)); // 用户ID
+        Button enable = new Button("\u542f\u7528"); // 启用
+        enable.setOnAction(e -> run(() -> userAdminService.changeStatus(requireLong(userId, "\u7528\u6237ID"), 1), out, reload)); // 用户ID
+        Button reset = new Button("\u91cd\u7f6e\u5bc6\u7801"); // 重置密码
+        reset.setOnAction(e -> run(() -> userAdminService.resetPassword(requireLong(userId, "\u7528\u6237ID"), newPwd.getText().trim()), out, null)); // 用户ID
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
         Button deleteUser = new Button("\u5220\u9664\u7528\u6237"); // 删除用户
         deleteUser.setOnAction(e -> {
             try {
@@ -521,8 +561,11 @@ public class DashboardFactory {
                 }
                 userAdminService.deleteUser(uid);
                 out.appendText("\u5220\u9664\u6210\u529f\n"); // 删除成功\\n
+<<<<<<< HEAD
                 addOperationLog("\u7528\u6237\u7ba1\u7406", "\u5220\u9664\u7528\u6237ID=" + uid); // 用户管理 | 删除用户ID=
                 resetManageForm.run();
+=======
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
 
                 reload.run();
             } catch (Exception ex) {
@@ -555,8 +598,21 @@ public class DashboardFactory {
         VBox body = new VBox(10,
                 sectionBox("\u67e5\u8be2\u533a", queryRow, pageRow), // 查询区
                 sectionBox("\u67e5\u8be2\u7ed3\u679c", table), // 查询结果
+<<<<<<< HEAD
                 sectionBox("\u65b0\u589e\u533a\uff08ID\u81ea\u52a8\u751f\u6210\uff09", addRow), // 新增区（ID自动生成）
                 sectionBox("\u4fee\u6539/\u5220\u9664\u533a\uff08\u6309\u7528\u6237ID\u64cd\u4f5c\uff09", manageRow, actionRow), // 修改/删除区（按用户ID操作）
+=======
+                sectionBox("\u7ef4\u62a4\u533a\uff08\u65b0\u589e\uff1aID\u81ea\u52a8\u751f\u6210\uff1b\u7981\u7528/\u542f\u7528/\u91cd\u7f6e\u5bc6\u7801/\u5220\u9664\uff09", // 维护区（新增：ID自动生成；禁用/启用/重置密码/删除）
+                        new HBox(8,
+                                new Label("\u7528\u6237\u540d"), addUsername, // 用户名
+                                new Label("\u5bc6\u7801"), addPassword, // 密码
+                                new Label("\u771f\u5b9e\u59d3\u540d"), addRealName, // 真实姓名
+                                new Label("\u624b\u673a\u53f7"), addPhone, // 手机号
+                                new Label("\u89d2\u8272"), addRole, // 角色
+                                addUser),
+                        new HBox(8, userId, newPwd),
+                        new HBox(8, disable, enable, reset, deleteUser)),
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
                 out);
         body.setPadding(new Insets(10));
         ScrollPane pageScroll = new ScrollPane(body);
@@ -591,7 +647,19 @@ public class DashboardFactory {
         TextField editClose = new TextField("22:00");
         TextField editDesc = new TextField();
 
+<<<<<<< HEAD
         keyword.setPromptText("\u5173\u952e\u5b57\uff08\u7559\u7a7a=\u5168\u90e8\uff09"); // 关键字（留空=全部） | 查询说明：1.输入停车场名称或地址任一部分，可模糊查询；2.关键字留空后点击“查询”，查询全部停车场。
+=======
+        id.setPromptText("ID");
+        name.setPromptText("\u505c\u8f66\u573a\u540d\u79f0"); // 停车场名称
+        address.setPromptText("\u5730\u5740"); // 地址
+        total.setPromptText("\u603b\u8f66\u4f4d\u6570"); // 总车位数
+        open.setPromptText("\u5f00\u653e\u65f6\u95f4 HH:mm"); // 开放时间 HH:mm
+        close.setPromptText("\u5173\u95ed\u65f6\u95f4 HH:mm"); // 关闭时间 HH:mm
+        desc.setPromptText("\u5907\u6ce8"); // 备注
+        keyword.setPromptText("\u5173\u952e\u5b57\uff08\u7559\u7a7a=\u5168\u90e8\uff09"); // 关键字（留空=全部）
+        keyword.setTooltip(new Tooltip("\u67e5\u8be2\u8bf4\u660e\uff1a1.\u8f93\u5165\u505c\u8f66\u573a\u540d\u79f0\u6216\u5730\u5740\u4efb\u4e00\u90e8\u5206\uff0c\u53ef\u6a21\u7cca\u67e5\u8be2\uff1b2.\u5173\u952e\u5b57\u7559\u7a7a\u540e\u70b9\u51fb\u201c\u67e5\u8be2\u201d\uff0c\u67e5\u8be2\u5168\u90e8\u505c\u8f66\u573a\u3002"));
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
         keyword.setPrefWidth(420);
         addName.setPromptText("\u505c\u8f66\u573a\u540d\u79f0"); // 停车场名称
         addAddress.setPromptText("\u5730\u5740"); // 地址
@@ -607,6 +675,7 @@ public class DashboardFactory {
         editClose.setPromptText("\u5173\u95ed\u65f6\u95f4 HH:mm"); // 关闭时间 HH:mm
         editDesc.setPromptText("\u5907\u6ce8"); // 备注
 
+<<<<<<< HEAD
         addName.setPrefWidth(180);
         addAddress.setPrefWidth(220);
         addTotal.setPrefWidth(120);
@@ -623,6 +692,10 @@ public class DashboardFactory {
 
         Button query = new Button("\u67e5\u8be2"); // 查询
         query.setTooltip(new Tooltip("\u7559\u7a7a\u5173\u952e\u5b57\u5e76\u70b9\u51fb\u6b64\u6309\u94ae\uff0c\u53ef\u67e5\u8be2\u5168\u90e8\u505c\u8f66\u573a\u3002")); // 留空关键字并点击此按钮，可查询全部停车场。
+=======
+        Button query = new Button("\u67e5\u8be2"); // 查询
+        query.setTooltip(new Tooltip("\u7559\u7a7a\u5173\u952e\u5b57\u5e76\u70b9\u51fb\u6b64\u6309\u94ae\uff0c\u53ef\u67e5\u8be2\u5168\u90e8\u505c\u8f66\u573a\u3002"));
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
         query.setOnAction(e -> {
             try {
                 List<ParkingLot> rows = parkingLotService.queryLots(keyword.getText(), 1, 50);
@@ -641,6 +714,7 @@ public class DashboardFactory {
             }
         });
         Label queryHint = new Label("\u8bf4\u660e\uff1a\u8f93\u5165\u5173\u952e\u5b57\u53ef\u6a21\u7cca\u67e5\u8be2\uff1b\u82e5\u9700\u67e5\u8be2\u5168\u90e8\uff0c\u8bf7\u5c06\u5173\u952e\u5b57\u7559\u7a7a\u540e\u70b9\u51fb\u201c\u67e5\u8be2\u201d\u3002"); // 说明：输入关键字可模糊查询；若需查询全部，请将关键字留空后点击“查询”。
+<<<<<<< HEAD
 
         Button add = new Button("\u65b0\u589e"); // 新增
         Runnable resetLotAddForm = () -> {
@@ -699,6 +773,26 @@ public class DashboardFactory {
         pageScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         pageScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         Tab tab = new Tab("\u505c\u8f66\u573a\u7ba1\u7406", pageScroll); // 停车场管理
+=======
+        queryHint.setStyle("-fx-text-fill: #475569;");
+
+        Button add = new Button("\u65b0\u589e"); // 新增
+        add.setOnAction(e -> run(() -> parkingLotService.addLot(lotFrom(id, name, address, total, open, close, desc, false)), out, null));
+        Button update = new Button("\u4fee\u6539"); // 修改
+        update.setOnAction(e -> run(() -> parkingLotService.updateLot(lotFrom(id, name, address, total, open, close, desc, true)), out, null));
+        Button delete = new Button("\u5220\u9664"); // 删除
+        delete.setOnAction(e -> run(() -> parkingLotService.removeLot(requireLong(id, "ID")), out, null));
+
+        VBox body = new VBox(10,
+                sectionBox("\u67e5\u8be2\u533a", new HBox(8, keyword, query), queryHint), // 查询区
+                sectionBox("\u67e5\u8be2\u7ed3\u679c", out), // 查询结果
+                sectionBox("\u7ef4\u62a4\u533a\uff08\u65b0\u589e/\u4fee\u6539/\u5220\u9664\uff09", // 维护区（新增/修改/删除）
+                        new HBox(8, id, name, address, total),
+                        new HBox(8, open, close, desc),
+                        new HBox(8, add, update, delete)));
+        body.setPadding(new Insets(10));
+        Tab tab = new Tab("\u505c\u8f66\u573a\u7ba1\u7406", body); // 停车场管理
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
         tab.setClosable(false);
         tab.setOnSelectionChanged(e -> {
             if (tab.isSelected()) {
@@ -714,6 +808,7 @@ public class DashboardFactory {
         TextField queryOwnerId = new TextField();
         ComboBox<String> queryType = new ComboBox<>(FXCollections.observableArrayList("\u5168\u90e8\u7c7b\u578b", "\u5730\u4e0a", "\u5730\u4e0b")); // 全部类型 | 地上 | 地下
         queryType.setValue("\u5168\u90e8\u7c7b\u578b"); // 全部类型
+<<<<<<< HEAD
         ComboBox<String> queryStatus = new ComboBox<>(FXCollections.observableArrayList("\u7a7a\u95f2", "\u5df2\u9884\u7ea6", "\u5360\u7528")); // 空闲 | 已预约 | 占用
         queryStatus.setValue("\u7a7a\u95f2"); // 空闲
         CheckBox showAll = new CheckBox("\u663e\u793a\u5168\u90e8\u8f66\u4f4d\uff08\u542b\u5df2\u9884\u7ea6/\u5360\u7528\uff09"); // 显示全部车位（含已预约/占用）
@@ -799,6 +894,25 @@ public class DashboardFactory {
             editEnd.clear();
         };
 
+=======
+        CheckBox showAll = new CheckBox("\u663e\u793a\u5168\u90e8\u8f66\u4f4d\uff08\u542b\u5df2\u9884\u7ea6/\u5360\u7528\uff09"); // 显示全部车位（含已预约/占用）
+        ComboBox<String> type = new ComboBox<>(FXCollections.observableArrayList("\u5730\u4e0a", "\u5730\u4e0b")); // 地上 | 地下
+        type.setValue("\u5730\u4e0a"); // 地上
+        ComboBox<String> status = new ComboBox<>(FXCollections.observableArrayList("\u7a7a\u95f2", "\u5df2\u9884\u7ea6", "\u5360\u7528")); // 空闲 | 已预约 | 占用
+        status.setValue("\u7a7a\u95f2"); // 空闲
+        TextField start = new TextField("08:00");
+        TextField end = new TextField("22:00");
+
+        id.setPromptText("\u8f66\u4f4dID"); // 车位ID
+        lotId.setPromptText("\u505c\u8f66\u573aID"); // 停车场ID
+        ownerId.setPromptText("\u6240\u6709\u8005ID"); // 所有者ID
+        number.setPromptText("\u8f66\u4f4d\u7f16\u53f7\u5173\u952e\u5b57\uff08\u652f\u6301\u90e8\u5206\u5339\u914d\uff09"); // 车位编号关键字（支持部分匹配）
+        queryKeyword.setPromptText("\u67e5\u8be2\u5173\u952e\u5b57\uff08\u8f66\u4f4d\u7f16\u53f7\uff09"); // 查询关键字（车位编号）
+        queryOwnerId.setPromptText("\u67e5\u8be2\u62e5\u6709\u8005ID\uff08\u53ef\u9009\uff0c\u53ef\u67e5\u8be2\u8be5\u8f66\u4e3b\u6240\u6709\u8f66\u4f4d\uff09"); // 查询拥有者ID（可选，可查询该车主所有车位）
+        start.setPromptText("\u67e5\u8be2\u65f6\u6bb5\u5f00\u59cb HH:mm\uff08\u7a7a\u95f2\u67e5\u8be2\u7528\uff09"); // 查询时段开始 HH:mm（空闲查询用）
+        end.setPromptText("\u67e5\u8be2\u65f6\u6bb5\u7ed3\u675f HH:mm\uff08\u7a7a\u95f2\u67e5\u8be2\u7528\uff09"); // 查询时段结束 HH:mm（空闲查询用）
+
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
         Button query = new Button("\u67e5\u8be2"); // 查询
         query.setOnAction(e -> {
             try {
@@ -815,11 +929,19 @@ public class DashboardFactory {
                 if (showAll.isSelected()) {
                     rows = parkingSpaceService.querySpaces("", "", null, 1, 500);
                 } else if ("FREE".equalsIgnoreCase(statusCode)) {
+<<<<<<< HEAD
                     LocalTime st = requireTime(queryStart, "\u67e5\u8be2\u5f00\u59cb\u65f6\u95f4"); // 查询开始时间
                     LocalTime et = requireTime(queryEnd, "\u67e5\u8be2\u7ed3\u675f\u65f6\u95f4"); // 查询结束时间
                     LocalDateTime startAt = LocalDateTime.now().withHour(st.getHour()).withMinute(st.getMinute()).withSecond(0).withNano(0);
                     LocalDateTime endAt = LocalDateTime.now().withHour(et.getHour()).withMinute(et.getMinute()).withSecond(0).withNano(0);
                     if (!startAt.isBefore(endAt)) {
+=======
+                    LocalTime st = requireTime(start, "\u67e5\u8be2\u5f00\u59cb\u65f6\u95f4"); // 查询开始时间
+                    LocalTime et = requireTime(end, "\u67e5\u8be2\u7ed3\u675f\u65f6\u95f4"); // 查询结束时间
+                    LocalDateTime queryStart = LocalDateTime.now().withHour(st.getHour()).withMinute(st.getMinute()).withSecond(0).withNano(0);
+                    LocalDateTime queryEnd = LocalDateTime.now().withHour(et.getHour()).withMinute(et.getMinute()).withSecond(0).withNano(0);
+                    if (!queryStart.isBefore(queryEnd)) {
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
                         throw new IllegalArgumentException("\u67e5\u8be2\u7ed3\u675f\u65f6\u95f4\u5fc5\u987b\u665a\u4e8e\u5f00\u59cb\u65f6\u95f4"); // 查询结束时间必须晚于开始时间
                     }
                     rows = parkingSpaceService.queryAvailableSpaces(startAt, endAt, 1, 500);
@@ -859,6 +981,7 @@ public class DashboardFactory {
         });
 
         Button add = new Button("\u65b0\u589e"); // 新增
+<<<<<<< HEAD
         add.setOnAction(e -> {
             try {
                 long newId = parkingSpaceService.addSpace(spaceFrom(editId, addLotId, addOwnerId, addNumber, addType, addStatus, addStart, addEnd, false));
@@ -904,6 +1027,24 @@ public class DashboardFactory {
         pageScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         pageScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         Tab tab = new Tab("\u8f66\u4f4d\u7ba1\u7406", pageScroll); // 车位管理
+=======
+        add.setOnAction(e -> run(() -> parkingSpaceService.addSpace(spaceFrom(id, lotId, ownerId, number, type, status, start, end, false)), out, null));
+        Button update = new Button("\u4fee\u6539"); // 修改
+        update.setOnAction(e -> run(() -> parkingSpaceService.updateSpace(spaceFrom(id, lotId, ownerId, number, type, status, start, end, true)), out, null));
+        Button delete = new Button("\u5220\u9664"); // 删除
+        delete.setOnAction(e -> run(() -> parkingSpaceService.removeSpace(requireLong(id, "ID")), out, null));
+
+        VBox body = new VBox(10,
+                sectionBox("\u67e5\u8be2\u533a", // 查询区
+                        new HBox(8, queryKeyword, queryOwnerId, queryType, status, showAll, query),
+                        new HBox(8, start, end)),
+                sectionBox("\u67e5\u8be2\u7ed3\u679c", out), // 查询结果
+                sectionBox("\u7ef4\u62a4\u533a\uff08\u65b0\u589e/\u4fee\u6539/\u5220\u9664\uff09", // 维护区（新增/修改/删除）
+                        new HBox(8, id, lotId, ownerId, number, type, status),
+                        new HBox(8, start, end, add, update, delete)));
+        body.setPadding(new Insets(10));
+        Tab tab = new Tab("\u8f66\u4f4d\u7ba1\u7406", body); // 车位管理
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
         tab.setClosable(false);
         tab.setOnSelectionChanged(e -> {
             if (tab.isSelected()) {
@@ -915,6 +1056,7 @@ public class DashboardFactory {
 
     private Tab pricingRuleTab() {
         TextField queryKeyword = new TextField();
+<<<<<<< HEAD
         TextField addName = new TextField();
         ComboBox<String> addChargeType = new ComboBox<>(FXCollections.observableArrayList("\u6309\u65f6\u8ba1\u8d39", "\u6309\u6b21\u8ba1\u8d39")); // 按时计费 | 按次计费
         addChargeType.setValue("\u6309\u65f6\u8ba1\u8d39"); // 按时计费
@@ -937,6 +1079,18 @@ public class DashboardFactory {
         editSpaceType.setValue("\u5730\u4e0a"); // 地上
         ComboBox<String> editStatus = new ComboBox<>(FXCollections.observableArrayList("\u542f\u7528", "\u7981\u7528")); // 启用 | 禁用
         editStatus.setValue("\u542f\u7528"); // 启用
+=======
+        TextField name = new TextField();
+        ComboBox<String> chargeType = new ComboBox<>(FXCollections.observableArrayList("\u6309\u65f6\u8ba1\u8d39", "\u6309\u6b21\u8ba1\u8d39")); // 按时计费 | 按次计费
+        chargeType.setValue("\u6309\u65f6\u8ba1\u8d39"); // 按时计费
+        TextField unitPrice = new TextField();
+        TextField unitTime = new TextField();
+        TextField fixedPrice = new TextField();
+        ComboBox<String> spaceType = new ComboBox<>(FXCollections.observableArrayList("\u5730\u4e0a", "\u5730\u4e0b")); // 地上 | 地下
+        spaceType.setValue("\u5730\u4e0a"); // 地上
+        ComboBox<String> status = new ComboBox<>(FXCollections.observableArrayList("\u542f\u7528", "\u7981\u7528")); // 启用 | 禁用
+        status.setValue("\u542f\u7528"); // 启用
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
 
         queryKeyword.setPrefWidth(260);
         addName.setPrefWidth(220);
@@ -955,6 +1109,7 @@ public class DashboardFactory {
         editSpaceType.setPrefWidth(110);
         editStatus.setPrefWidth(110);
 
+<<<<<<< HEAD
         queryKeyword.setPromptText("\u89c4\u5219ID/\u540d\u79f0\uff08\u7559\u7a7a=\u5168\u90e8\uff09"); // 规则ID/名称（留空=全部） | 查询说明：1.输入规则ID可按ID查询；2.输入名称关键字可模糊查询；3.留空查询全部规则。
         addName.setPromptText("\u89c4\u5219\u540d\u79f0\uff08\u4f8b\u5982\uff1a\u5730\u4e0a\u6309\u65f6\u8ba1\u8d39\uff09"); // 规则名称（例如：地上按时计费）
         addUnitPrice.setPromptText("\u5355\u4ef7\uff08\u5143\uff09"); // 单价（元）
@@ -965,12 +1120,26 @@ public class DashboardFactory {
         editUnitPrice.setPromptText("\u5355\u4ef7\uff08\u5143\uff09"); // 单价（元）
         editUnitTime.setPromptText("\u5355\u4f4d\u65f6\u957f\uff08\u5206\u949f\uff09"); // 单位时长（分钟）
         editFixedPrice.setPromptText("\u56fa\u5b9a\u4ef7\u683c\uff08\u5143\uff09"); // 固定价格（元）
+=======
+        id.setPromptText("\u89c4\u5219ID"); // 规则ID
+        queryKeyword.setPromptText("\u89c4\u5219ID/\u540d\u79f0\uff08\u7559\u7a7a=\u5168\u90e8\uff09"); // 规则ID/名称（留空=全部）
+        queryKeyword.setTooltip(new Tooltip("\u67e5\u8be2\u8bf4\u660e\uff1a1.\u8f93\u5165\u89c4\u5219ID\u53ef\u6309ID\u67e5\u8be2\uff1b2.\u8f93\u5165\u540d\u79f0\u5173\u952e\u5b57\u53ef\u6a21\u7cca\u67e5\u8be2\uff1b3.\u7559\u7a7a\u67e5\u8be2\u5168\u90e8\u89c4\u5219\u3002"));
+        name.setPromptText("\u89c4\u5219\u540d\u79f0\uff08\u4f8b\u5982\uff1a\u5730\u4e0a\u6309\u65f6\u8ba1\u8d39\uff09"); // 规则名称（例如：地上按时计费）
+        unitPrice.setPromptText("\u5355\u4ef7\uff08\u5143\uff09"); // 单价（元）
+        unitTime.setPromptText("\u5355\u4f4d\u65f6\u957f\uff08\u5206\u949f\uff09"); // 单位时长（分钟）
+        fixedPrice.setPromptText("\u56fa\u5b9a\u4ef7\u683c\uff08\u5143\uff09"); // 固定价格（元）
+
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
         TextArea out = new TextArea();
         out.setEditable(false);
         out.setPrefRowCount(10);
 
         Button query = new Button("\u67e5\u8be2"); // 查询
+<<<<<<< HEAD
         Runnable reload = () -> {
+=======
+        query.setOnAction(e -> {
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
             try {
                 // 查询支持两种方式：输入数字按规则ID查询；输入文本按规则名称模糊查询；留空则查询全部。
                 List<PricingRule> rows = pricingRuleService.queryRules(queryKeyword.getText(), "", null, 1, 30);
@@ -1042,6 +1211,7 @@ public class DashboardFactory {
                 }
         ));
 
+<<<<<<< HEAD
         Label pricingHelp = new Label("\u8bf4\u660e\uff1a\u6309\u65f6\u8ba1\u8d39\u8bf7\u586b\u5199\u201c\u5355\u4ef7+\u5355\u4f4d\u65f6\u957f\u201d\uff1b\u6309\u6b21\u8ba1\u8d39\u8bf7\u586b\u5199\u201c\u56fa\u5b9a\u4ef7\u683c\u201d\u3002"); // 说明：按时计费请填写“单价+单位时长”；按次计费请填写“固定价格”。
         Label pricingQueryHint = new Label("\u67e5\u8be2\u8bf4\u660e\uff1a\u8f93\u5165\u89c4\u5219ID\u53ef\u6309ID\u67e5\u8be2\uff1b\u8f93\u5165\u540d\u79f0\u5173\u952e\u5b57\u53ef\u6a21\u7cca\u67e5\u8be2\uff1b\u7559\u7a7a\u67e5\u8be2\u5168\u90e8\u3002"); // 查询说明：输入规则ID可按ID查询；输入名称关键字可模糊查询；留空查询全部。
         FlowPane addRow = new FlowPane(8, 8, addName, addChargeType, addUnitPrice, addUnitTime, addFixedPrice, addSpaceType, addStatus, add);
@@ -1061,6 +1231,29 @@ public class DashboardFactory {
         pageScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         pageScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         Tab tab = new Tab("\u8ba1\u8d39\u89c4\u5219", pageScroll); // 计费规则
+=======
+        Button add = new Button("\u65b0\u589e"); // 新增
+        add.setOnAction(e -> run(() -> pricingRuleService.addRule(ruleFrom(id, name, chargeType, unitPrice, unitTime, fixedPrice, spaceType, status, false)), out, null));
+        Button update = new Button("\u4fee\u6539"); // 修改
+        update.setOnAction(e -> run(() -> pricingRuleService.updateRule(ruleFrom(id, name, chargeType, unitPrice, unitTime, fixedPrice, spaceType, status, true)), out, null));
+        Button delete = new Button("\u5220\u9664"); // 删除
+        delete.setOnAction(e -> run(() -> pricingRuleService.removeRule(requireLong(id, "ID")), out, null));
+
+        Label pricingHelp = new Label("\u8bf4\u660e\uff1a\u6309\u65f6\u8ba1\u8d39\u8bf7\u586b\u5199\u201c\u5355\u4ef7+\u5355\u4f4d\u65f6\u957f\u201d\uff1b\u6309\u6b21\u8ba1\u8d39\u8bf7\u586b\u5199\u201c\u56fa\u5b9a\u4ef7\u683c\u201d\u3002"); // 说明：按时计费请填写“单价+单位时长”；按次计费请填写“固定价格”。
+        pricingHelp.setWrapText(true);
+        Label pricingQueryHint = new Label("\u67e5\u8be2\u8bf4\u660e\uff1a\u8f93\u5165\u89c4\u5219ID\u53ef\u6309ID\u67e5\u8be2\uff1b\u8f93\u5165\u540d\u79f0\u5173\u952e\u5b57\u53ef\u6a21\u7cca\u67e5\u8be2\uff1b\u7559\u7a7a\u67e5\u8be2\u5168\u90e8\u3002"); // 查询说明：输入规则ID可按ID查询；输入名称关键字可模糊查询；留空查询全部。
+        pricingQueryHint.setStyle("-fx-text-fill: #475569;");
+
+        VBox body = new VBox(10,
+                sectionBox("\u67e5\u8be2\u533a", new HBox(8, queryKeyword, query), pricingQueryHint), // 查询区
+                sectionBox("\u67e5\u8be2\u7ed3\u679c", out), // 查询结果
+                sectionBox("\u7ef4\u62a4\u533a\uff08\u65b0\u589e/\u4fee\u6539/\u5220\u9664\uff09", // 维护区（新增/修改/删除）
+                        pricingHelp,
+                        new HBox(8, id, name, chargeType, unitPrice, unitTime, fixedPrice, spaceType, status),
+                        new HBox(8, add, update, delete)));
+        body.setPadding(new Insets(10));
+        Tab tab = new Tab("\u8ba1\u8d39\u89c4\u5219", body); // 计费规则
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
         tab.setClosable(false);
         tab.setOnSelectionChanged(e -> {
             if (tab.isSelected()) {
@@ -1078,16 +1271,27 @@ public class DashboardFactory {
         out.setEditable(false);
 
         Button query = new Button("\u67e5\u8be2\u7ed3\u7b97\u8bb0\u5f55"); // 查询结算记录
+<<<<<<< HEAD
         Runnable reload = () -> {
+=======
+        query.setOnAction(e -> {
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
             try {
                 List<Map<String, Object>> rows = revenueService.queryRevenueForAdmin(settleStatusCode(status.getValue()), 1, 50);
                 out.clear();
                 for (Map<String, Object> row : rows) out.appendText(formatRowMap(row) + "\n");
+<<<<<<< HEAD
             } catch (Exception ex) {
                 out.appendText(formatError(ex) + "\n");
             }
         };
         query.setOnAction(e -> reload.run());
+=======
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        Button approve = new Button("\u5ba1\u6838\u7ed3\u7b97"); // 审核结算
+        approve.setOnAction(e -> run(() -> revenueService.settleRevenue(requireLong(revenueId, "\u7ed3\u7b97ID")), out, null)); // 结算ID
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
 
         Button approve = new Button("\u5ba1\u6838\u7ed3\u7b97"); // 审核结算
         approve.setOnAction(e -> run(
@@ -1106,8 +1310,11 @@ public class DashboardFactory {
                 sectionBox("\u67e5\u8be2\u7ed3\u679c", out) // 查询结果
         );
         body.setPadding(new Insets(10));
+<<<<<<< HEAD
         reload.run();
 
+=======
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
         Tab tab = new Tab("\u7ed3\u7b97\u5ba1\u6838", body); // 结算审核
         tab.setClosable(false);
         return tab;
@@ -1115,9 +1322,20 @@ public class DashboardFactory {
 
     private Tab reportTab() {
         TextArea out = new TextArea();
+<<<<<<< HEAD
         Button income = new Button("\u6536\u5165\u6392\u884c"); // 收入排行
         income.setOnAction(e -> loadReport(out, "income"));
         Button reserve = new Button("\u9884\u7ea6\u6392\u884c"); // 预约排行
+=======
+        out.setEditable(false);
+        out.setPrefRowCount(16);
+
+        Button income = new Button("\u6536\u5165\u6392\u884c"); // 收入排行
+        income.setPrefWidth(110);
+        income.setOnAction(e -> loadReport(out, "income"));
+        Button reserve = new Button("\u9884\u7ea6\u6392\u884c"); // 预约排行
+        reserve.setPrefWidth(110);
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
         reserve.setOnAction(e -> loadReport(out, "reserve"));
         ComboBox<String> usageMode = new ComboBox<>(FXCollections.observableArrayList(
                 "\u5168\u90e8\u5165\u573a\u6b21\u6570", // 全部入场次数
@@ -1125,13 +1343,26 @@ public class DashboardFactory {
                 "\u5165\u573a\u6b21\u6570\u5012\u6570\u524d\u4e09" // 入场次数倒数前三
         ));
         usageMode.setValue("\u5168\u90e8\u5165\u573a\u6b21\u6570"); // 全部入场次数
-        usageMode.setPrefWidth(180);
+        usageMode.setPrefWidth(220);
         Button usage = new Button("\u5165\u573a\u7edf\u8ba1"); // 入场统计
+        usage.setPrefWidth(110);
         usage.setOnAction(e -> loadUsageReport(out, usageMode.getValue()));
 
-        VBox body = new VBox(8, new HBox(8, income, reserve, usageMode, usage), out);
+        Label hint = new Label("\u8bf4\u660e\uff1a\u5165\u573a\u7edf\u8ba1\u53ef\u9009\u62e9\u5168\u90e8/\u524d\u4e09/\u5012\u6570\u524d\u4e09\u3002"); // 说明：入场统计可选择全部/前三/倒数前三。
+        hint.setStyle("-fx-text-fill: #475569;");
+
+        HBox rankRow = new HBox(10, income, reserve);
+        HBox usageRow = new HBox(10, new Label("\u5165\u573a\u7edf\u8ba1\u6a21\u5f0f"), usageMode, usage); // 入场统计模式
+        HBox.setHgrow(usageMode, Priority.ALWAYS);
+        usageMode.setMaxWidth(Double.MAX_VALUE);
+
+        VBox body = new VBox(10,
+                sectionBox("\u6392\u884c\u7edf\u8ba1", rankRow), // 排行统计
+                sectionBox("\u5165\u573a\u7edf\u8ba1", usageRow, hint), // 入场统计
+                sectionBox("\u7edf\u8ba1\u7ed3\u679c", out)); // 统计结果
         body.setPadding(new Insets(10));
         Tab tab = new Tab("\u7edf\u8ba1\u62a5\u8868", body); // 统计报表
+<<<<<<< HEAD
         tab.setClosable(false);
         return tab;
     }
@@ -1219,6 +1450,8 @@ public class DashboardFactory {
         reload.run();
 
         Tab tab = new Tab("\u64cd\u4f5c\u65e5\u5fd7", body); // 操作日志
+=======
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
         tab.setClosable(false);
         return tab;
     }
@@ -1350,7 +1583,10 @@ public class DashboardFactory {
         if ("Insert pricing rule failed".equalsIgnoreCase(m)) return "\u65b0\u589e\u8ba1\u8d39\u89c4\u5219\u5931\u8d25"; // 新增计费规则失败
         if ("Insert revenue record failed".equalsIgnoreCase(m)) return "\u751f\u6210\u6536\u76ca\u8bb0\u5f55\u5931\u8d25"; // 生成收益记录失败
         if ("Insert user failed".equalsIgnoreCase(m)) return "\u65b0\u589e\u7528\u6237\u5931\u8d25"; // 新增用户失败
+<<<<<<< HEAD
         if ("operationType is required".equalsIgnoreCase(m)) return "\u64cd\u4f5c\u65e5\u5fd7\u7c7b\u578b\u4e0d\u80fd\u4e3a\u7a7a"; // 操作日志类型不能为空
+=======
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
 
         return m;
     }
@@ -1472,12 +1708,15 @@ public class DashboardFactory {
     private String localizeKey(String key) {
         if (key == null) return "";
         switch (key) {
+<<<<<<< HEAD
             case "log_id": return "\u65e5\u5fd7ID"; // 日志ID
             case "user_id": return "\u7528\u6237ID"; // 用户ID
             case "username": return "\u7528\u6237\u540d"; // 用户名
             case "operation_type": return "\u64cd\u4f5c\u7c7b\u578b"; // 操作类型
             case "operation_desc": return "\u64cd\u4f5c\u63cf\u8ff0"; // 操作描述
             case "create_time": return "\u521b\u5efa\u65f6\u95f4"; // 创建时间
+=======
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
             case "owner_id": return "\u6536\u76ca\u4ebaID"; // 收益人ID
             case "payer_user_id": return "\u652f\u4ed8\u4ebaID"; // 支付人ID
             case "payment_id": return "\u652f\u4ed8\u8bb0\u5f55ID"; // 支付记录ID
@@ -1648,7 +1887,10 @@ public class DashboardFactory {
         try {
             action.run();
             out.appendText("\u64cd\u4f5c\u6210\u529f\n"); // 操作成功\\n
+<<<<<<< HEAD
             addOperationLog("\u754c\u9762\u64cd\u4f5c", "\u7528\u6237\u6267\u884c\u4e86\u4e00\u6b21\u7ba1\u7406\u64cd\u4f5c"); // 界面操作 | 用户执行了一次管理操作
+=======
+>>>>>>> 1ecac45a25378fd3d1237c76705ffb692ff23f32
 
             if (then != null) then.run();
         } catch (Exception ex) {
@@ -1676,4 +1918,3 @@ public class DashboardFactory {
         return box;
     }
 }
-
