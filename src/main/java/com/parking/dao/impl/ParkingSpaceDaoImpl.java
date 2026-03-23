@@ -38,12 +38,12 @@ public class ParkingSpaceDaoImpl implements ParkingSpaceDao {
                     return nextId;
                 } catch (SQLException ex) {
                     if (!isDuplicateKey(ex)) {
-                        throw ex;
+                        throw new SQLException("新增车位失败：" + explainInsertError(ex), ex);
                     }
                 }
             }
         }
-        throw new SQLException("Insert parking space failed");
+        throw new SQLException("新增车位失败：主键冲突，请重试");
     }
 
     @Override
@@ -214,6 +214,25 @@ public class ParkingSpaceDaoImpl implements ParkingSpaceDao {
     }
 
     @Override
+    public ParkingSpace findById(Long spaceId) throws SQLException {
+        String sql = """
+                SELECT space_id, lot_id, owner_id, space_number, type, status, share_start_time, share_end_time
+                FROM ParkingSpaces
+                WHERE space_id = ?
+                """;
+        try (Connection conn = DbUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, spaceId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return mapRow(rs);
+                }
+            }
+        }
+        return null;
+    }
+
+    @Override
     public ParkingSpace findById(Connection conn, Long spaceId) throws SQLException {
         String sql = """
                 SELECT space_id, lot_id, owner_id, space_number, type, status, share_start_time, share_end_time
@@ -271,6 +290,27 @@ public class ParkingSpaceDaoImpl implements ParkingSpaceDao {
 
     private boolean isDuplicateKey(SQLException ex) {
         return "23000".equals(ex.getSQLState()) || ex.getErrorCode() == 1062;
+    }
+
+    private String explainInsertError(SQLException ex) {
+        String msg = ex.getMessage() == null ? "" : ex.getMessage();
+        String lower = msg.toLowerCase();
+        if (lower.contains("fk_spaces_lot")) {
+            return "停车场ID不存在";
+        }
+        if (lower.contains("fk_spaces_owner")) {
+            return "所有者ID不存在";
+        }
+        if (lower.contains("duplicate") && lower.contains("space_number")) {
+            return "车位编号重复";
+        }
+        if ("23000".equals(ex.getSQLState())) {
+            return "外键或唯一约束冲突";
+        }
+        if (!msg.isBlank()) {
+            return msg;
+        }
+        return "数据库写入失败";
     }
 
     private ParkingSpace mapRow(ResultSet rs) throws SQLException {

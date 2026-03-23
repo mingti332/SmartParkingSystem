@@ -98,6 +98,8 @@ public class UserAdminServiceImpl implements UserAdminService {
         if (userDao.hasDependencies(userId)) {
             throw new ServiceException("该用户已有预约/停车/支付/收益等关联记录，不能删除（建议改为禁用）");
         }
+        // 操作日志不属于业务绑定，删除用户前先清理该用户日志，避免外键约束阻塞删除
+        userDao.clearOperationLogsByUserId(userId);
         if (userDao.deleteById(userId) == 0) {
             throw new ServiceException("删除失败，请重试");
         }

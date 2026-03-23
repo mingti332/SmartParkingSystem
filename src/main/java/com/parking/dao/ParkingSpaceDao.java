@@ -25,6 +25,8 @@ public interface ParkingSpaceDao {
 
     int updateStatus(Connection conn, Long spaceId, String status) throws SQLException;
 
+    ParkingSpace findById(Long spaceId) throws SQLException;
+
     ParkingSpace findById(Connection conn, Long spaceId) throws SQLException;
 
     SpaceMeta findMetaById(Connection conn, Long spaceId) throws SQLException;

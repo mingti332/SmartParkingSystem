@@ -1,8 +1,14 @@
 package com.parking.service.impl;
 
+import com.parking.dao.ParkingLotDao;
 import com.parking.dao.ParkingSpaceDao;
+import com.parking.dao.UserDao;
+import com.parking.dao.impl.ParkingLotDaoImpl;
 import com.parking.dao.impl.ParkingSpaceDaoImpl;
+import com.parking.dao.impl.UserDaoImpl;
+import com.parking.entity.ParkingLot;
 import com.parking.entity.ParkingSpace;
+import com.parking.entity.User;
 import com.parking.service.ParkingSpaceService;
 import com.parking.service.ServiceException;
 
@@ -13,6 +19,8 @@ import java.util.List;
 //车位模块
 public class ParkingSpaceServiceImpl implements ParkingSpaceService {
     private final ParkingSpaceDao parkingSpaceDao = new ParkingSpaceDaoImpl();
+    private final ParkingLotDao parkingLotDao = new ParkingLotDaoImpl();
+    private final UserDao userDao = new UserDaoImpl();
 
     @Override
     public long addSpace(ParkingSpace space) throws SQLException {
@@ -22,8 +30,16 @@ public class ParkingSpaceServiceImpl implements ParkingSpaceService {
 
     @Override
     public void updateSpace(ParkingSpace space) throws SQLException {
-        validateForSave(space, true);
-        if (parkingSpaceDao.update(space) == 0) {
+        if (space == null || space.getSpaceId() == null) {
+            throw new ServiceException("车位ID不能为空");
+        }
+        ParkingSpace existing = parkingSpaceDao.findById(space.getSpaceId());
+        if (existing == null) {
+            throw new ServiceException("未找到对应车位");
+        }
+        ParkingSpace merged = mergeForUpdate(existing, space);
+        validateForSave(merged, true);
+        if (parkingSpaceDao.update(merged) == 0) {
             throw new ServiceException("未找到对应车位");
         }
     }
@@ -94,5 +110,48 @@ public class ParkingSpaceServiceImpl implements ParkingSpaceService {
         if (space.getStatus() == null || space.getStatus().isBlank()) {
             throw new ServiceException("车位状态不能为空");
         }
+        if (space.getShareStartTime() == null || space.getShareEndTime() == null) {
+            throw new ServiceException("共享开始时间和结束时间不能为空");
+        }
+        if (!space.getShareStartTime().isBefore(space.getShareEndTime())) {
+            throw new ServiceException("共享时间必须为开始早于结束");
+        }
+
+        try {
+            ParkingLot lot = parkingLotDao.findById(space.getLotId());
+            if (lot == null) {
+                throw new ServiceException("停车场ID不存在，请先创建停车场");
+            }
+
+            User owner = userDao.findById(space.getOwnerId());
+            if (owner == null) {
+                throw new ServiceException("所有者ID不存在，请先创建用户");
+            }
+            String role = owner.getRole() == null ? "" : owner.getRole().trim().toUpperCase();
+            if (!"OWNER".equals(role)) {
+                throw new ServiceException("所有者ID对应用户不是车位所有者");
+            }
+        } catch (SQLException ex) {
+            throw new ServiceException("校验车位关联信息失败：" + ex.getMessage());
+        }
+    }
+
+    private ParkingSpace mergeForUpdate(ParkingSpace oldValue, ParkingSpace patch) {
+        ParkingSpace merged = new ParkingSpace();
+        merged.setSpaceId(oldValue.getSpaceId());
+        merged.setLotId(patch.getLotId() == null ? oldValue.getLotId() : patch.getLotId());
+        merged.setOwnerId(patch.getOwnerId() == null ? oldValue.getOwnerId() : patch.getOwnerId());
+        merged.setSpaceNumber(mergeText(oldValue.getSpaceNumber(), patch.getSpaceNumber()));
+        merged.setType(mergeText(oldValue.getType(), patch.getType()));
+        merged.setStatus(mergeText(oldValue.getStatus(), patch.getStatus()));
+        merged.setShareStartTime(patch.getShareStartTime() == null ? oldValue.getShareStartTime() : patch.getShareStartTime());
+        merged.setShareEndTime(patch.getShareEndTime() == null ? oldValue.getShareEndTime() : patch.getShareEndTime());
+        return merged;
+    }
+
+    private String mergeText(String oldValue, String newValue) {
+        if (newValue == null) return oldValue;
+        String nv = newValue.trim();
+        return nv.isEmpty() ? oldValue : nv;
     }
 }

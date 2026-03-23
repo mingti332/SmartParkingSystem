@@ -83,6 +83,25 @@ public class PricingRuleDaoImpl implements PricingRuleDao {
     }
 
     @Override
+    public PricingRule findById(Long ruleId) throws SQLException {
+        String sql = """
+                SELECT rule_id, rule_name, charge_type, unit_price, unit_time, fixed_price, applicable_space_type, status
+                FROM PricingRules
+                WHERE rule_id = ?
+                """;
+        try (Connection conn = DbUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, ruleId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return mapRule(rs);
+                }
+            }
+        }
+        return null;
+    }
+
+    @Override
     public List<PricingRule> search(String keyword, String chargeType, Integer status, int pageNo, int pageSize) throws SQLException {
         StringBuilder sql = new StringBuilder("""
                 SELECT rule_id, rule_name, charge_type, unit_price, unit_time, fixed_price, applicable_space_type, status

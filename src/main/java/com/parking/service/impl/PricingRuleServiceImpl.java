@@ -20,8 +20,16 @@ public class PricingRuleServiceImpl implements PricingRuleService {
 
     @Override
     public void updateRule(PricingRule rule) throws SQLException {
-        validate(rule, true);
-        if (pricingRuleDao.update(rule) == 0) {
+        if (rule == null || rule.getRuleId() == null) {
+            throw new ServiceException("规则ID不能为空");
+        }
+        PricingRule existing = pricingRuleDao.findById(rule.getRuleId());
+        if (existing == null) {
+            throw new ServiceException("计费规则不存在");
+        }
+        PricingRule merged = mergeForUpdate(existing, rule);
+        validate(merged, true);
+        if (pricingRuleDao.update(merged) == 0) {
             throw new ServiceException("计费规则不存在");
         }
     }
@@ -74,5 +82,24 @@ public class PricingRuleServiceImpl implements PricingRuleService {
         if (rule.getStatus() == null) {
             rule.setStatus(1);
         }
+    }
+
+    private PricingRule mergeForUpdate(PricingRule oldValue, PricingRule patch) {
+        PricingRule merged = new PricingRule();
+        merged.setRuleId(oldValue.getRuleId());
+        merged.setRuleName(mergeText(oldValue.getRuleName(), patch.getRuleName()));
+        merged.setChargeType(mergeText(oldValue.getChargeType(), patch.getChargeType()));
+        merged.setUnitPrice(patch.getUnitPrice() == null ? oldValue.getUnitPrice() : patch.getUnitPrice());
+        merged.setUnitTime(patch.getUnitTime() == null ? oldValue.getUnitTime() : patch.getUnitTime());
+        merged.setFixedPrice(patch.getFixedPrice() == null ? oldValue.getFixedPrice() : patch.getFixedPrice());
+        merged.setApplicableSpaceType(mergeText(oldValue.getApplicableSpaceType(), patch.getApplicableSpaceType()));
+        merged.setStatus(patch.getStatus() == null ? oldValue.getStatus() : patch.getStatus());
+        return merged;
+    }
+
+    private String mergeText(String oldValue, String newValue) {
+        if (newValue == null) return oldValue;
+        String v = newValue.trim();
+        return v.isEmpty() ? oldValue : v;
     }
 }

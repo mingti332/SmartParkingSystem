@@ -26,5 +26,7 @@ public interface UserDao {
 
     boolean hasDependencies(Long userId) throws SQLException;
 
+    int clearOperationLogsByUserId(Long userId) throws SQLException;
+
     int deleteById(Long userId) throws SQLException;
 }

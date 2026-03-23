@@ -16,27 +16,32 @@ import java.util.Map;
 public class OperationLogDaoImpl implements OperationLogDao {
     @Override
     public long insert(Long userId, String operationType, String operationDesc) throws SQLException {
-        String sql = """
-                INSERT INTO OperationLogs(user_id, operation_type, operation_desc)
-                VALUES (?, ?, ?)
+        String insertSql = """
+                INSERT INTO OperationLogs(log_id, user_id, operation_type, operation_desc)
+                VALUES (?, ?, ?, ?)
                 """;
-        try (Connection conn = DbUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql, PreparedStatement.RETURN_GENERATED_KEYS)) {
-            if (userId == null) {
-                ps.setNull(1, java.sql.Types.BIGINT);
-            } else {
-                ps.setLong(1, userId);
-            }
-            ps.setString(2, operationType);
-            ps.setString(3, operationDesc);
-            ps.executeUpdate();
-            try (ResultSet rs = ps.getGeneratedKeys()) {
-                if (rs.next()) {
-                    return rs.getLong(1);
+        try (Connection conn = DbUtil.getConnection()) {
+            for (int i = 0; i < 5; i++) {
+                long nextId = findReusableId(conn);
+                try (PreparedStatement ps = conn.prepareStatement(insertSql)) {
+                    ps.setLong(1, nextId);
+                    if (userId == null) {
+                        ps.setNull(2, java.sql.Types.BIGINT);
+                    } else {
+                        ps.setLong(2, userId);
+                    }
+                    ps.setString(3, operationType);
+                    ps.setString(4, operationDesc);
+                    ps.executeUpdate();
+                    return nextId;
+                } catch (SQLException ex) {
+                    if (!isDuplicateKey(ex)) {
+                        throw ex;
+                    }
                 }
             }
         }
-        return 0L;
+        throw new SQLException("Insert operation log failed");
     }
 
     @Override
@@ -132,17 +137,20 @@ public class OperationLogDaoImpl implements OperationLogDao {
 
         switch (cat) {
             case "ADD":
-                conditions.add("(" + typeCol + " LIKE ? OR " + descCol + " LIKE ?)");
+                conditions.add("(" + typeCol + " = ? OR " + typeCol + " LIKE ? OR " + descCol + " LIKE ?)");
+                params.add("ADD");
                 params.add("%新增%");
                 params.add("%新增%");
                 break;
             case "DELETE":
-                conditions.add("(" + typeCol + " LIKE ? OR " + descCol + " LIKE ?)");
+                conditions.add("(" + typeCol + " = ? OR " + typeCol + " LIKE ? OR " + descCol + " LIKE ?)");
+                params.add("DELETE");
                 params.add("%删除%");
                 params.add("%删除%");
                 break;
             case "UPDATE":
-                conditions.add("(" + typeCol + " LIKE ? OR " + descCol + " LIKE ? OR " + descCol + " LIKE ? OR " + descCol + " LIKE ? OR " + descCol + " LIKE ? OR " + descCol + " LIKE ?)");
+                conditions.add("(" + typeCol + " = ? OR " + typeCol + " LIKE ? OR " + descCol + " LIKE ? OR " + descCol + " LIKE ? OR " + descCol + " LIKE ? OR " + descCol + " LIKE ? OR " + descCol + " LIKE ?)");
+                params.add("UPDATE");
                 params.add("%修改%");
                 params.add("%修改%");
                 params.add("%重置%");
@@ -150,8 +158,42 @@ public class OperationLogDaoImpl implements OperationLogDao {
                 params.add("%启用%");
                 params.add("%审核%");
                 break;
+            case "LOGIN":
+                conditions.add("(" + typeCol + " = ? OR " + typeCol + " LIKE ? OR " + descCol + " LIKE ?)");
+                params.add("LOGIN");
+                params.add("%登录%");
+                params.add("%登录%");
+                break;
             default:
                 break;
         }
+    }
+
+    private long findReusableId(Connection conn) throws SQLException {
+        String sql = """
+                SELECT MIN(t.candidate_id) AS next_id
+                FROM (
+                    SELECT 1 AS candidate_id
+                    UNION ALL
+                    SELECT log_id + 1 AS candidate_id
+                    FROM OperationLogs
+                ) t
+                LEFT JOIN OperationLogs l ON l.log_id = t.candidate_id
+                WHERE l.log_id IS NULL
+                """;
+        try (PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) {
+                long id = rs.getLong("next_id");
+                if (id > 0) {
+                    return id;
+                }
+            }
+        }
+        return 1L;
+    }
+
+    private boolean isDuplicateKey(SQLException ex) {
+        return "23000".equals(ex.getSQLState()) || ex.getErrorCode() == 1062;
     }
 }

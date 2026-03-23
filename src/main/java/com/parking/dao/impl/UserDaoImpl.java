@@ -195,8 +195,7 @@ public class UserDaoImpl implements UserDao {
                     (SELECT COUNT(1) FROM Reservations r WHERE r.user_id = ?) AS c2,
                     (SELECT COUNT(1) FROM ParkingRecords pr WHERE pr.user_id = ?) AS c3,
                     (SELECT COUNT(1) FROM PaymentRecords pay WHERE pay.user_id = ?) AS c4,
-                    (SELECT COUNT(1) FROM RevenueRecords rev WHERE rev.owner_id = ?) AS c5,
-                    (SELECT COUNT(1) FROM OperationLogs l WHERE l.user_id = ?) AS c6
+                    (SELECT COUNT(1) FROM RevenueRecords rev WHERE rev.owner_id = ?) AS c5
                 """;
         try (Connection conn = DbUtil.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -205,19 +204,27 @@ public class UserDaoImpl implements UserDao {
             ps.setLong(3, userId);
             ps.setLong(4, userId);
             ps.setLong(5, userId);
-            ps.setLong(6, userId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     return rs.getLong("c1") > 0
                             || rs.getLong("c2") > 0
                             || rs.getLong("c3") > 0
                             || rs.getLong("c4") > 0
-                            || rs.getLong("c5") > 0
-                            || rs.getLong("c6") > 0;
+                            || rs.getLong("c5") > 0;
                 }
             }
         }
         return false;
+    }
+
+    @Override
+    public int clearOperationLogsByUserId(Long userId) throws SQLException {
+        String sql = "DELETE FROM OperationLogs WHERE user_id = ?";
+        try (Connection conn = DbUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, userId);
+            return ps.executeUpdate();
+        }
     }
 
     @Override
