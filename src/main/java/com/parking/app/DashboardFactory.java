@@ -156,10 +156,9 @@ public class DashboardFactory {
                                     + "\uff0c\u9884\u7ea6\u7ed3\u675f=" + fmtDateTime(r.getReserveEnd()) // ，预约结束=
                                     + "\uff0c\u72b6\u6001=" + r.getStatus() // ，状态=
                                     + "\uff0c\u521b\u5efa\u65f6\u95f4=" + fmtDateTime(r.getCreateTime()) // ，创建时间=
-                                    + "\n"
+                                    + "\n\n"
                     );
                 }
-                out.appendText("\n");
             } catch (Exception ex) {
                 out.appendText(formatError(ex) + "\n");
             }
@@ -171,7 +170,7 @@ public class DashboardFactory {
                 List<Map<String, Object>> rows = revenueService.getOwnerIncomeDetail(user.getUserId(), 1, 30);
                 out.appendText("\n\u3010\u6536\u76ca\u660e\u7ec6\u3011\n"); // \\n【收益明细】\\n
                 for (Map<String, Object> row : rows) {
-                    out.appendText(formatRowMap(row) + "\n");
+                    out.appendText(formatRowMap(row) + "\n\n");
                 }
                 BigDecimal total = revenueService.getOwnerIncomeTotal(user.getUserId());
                 out.appendText("\u603b\u6536\u76ca=" + formatAmount(total) + "\n\n"); // 总收益=
@@ -195,20 +194,27 @@ public class DashboardFactory {
         return tabs;
     }
     private Tab reservationTab(User user) {
-        TextField spaceId = new TextField();
-
-        spaceId.setPromptText("\u8f66\u4f4dID"); // 车位ID
+        TextField lotId = new TextField();
+        lotId.setPromptText("停车场ID（必填）"); // 停车场ID（必填）
+        lotId.setPrefWidth(180);
+        ComboBox<String> reserveType = new ComboBox<>(FXCollections.observableArrayList("地上", "地下")); // 地上 | 地下
+        reserveType.setValue("地上"); // 地上
+        reserveType.setPrefWidth(110);
         TextField start = new TextField(LocalDateTime.now().plusMinutes(10).withSecond(0).withNano(0).format(DT_SPACE_FMT));
         TextField end = new TextField(LocalDateTime.now().plusHours(2).withSecond(0).withNano(0).format(DT_SPACE_FMT));
-        start.setPromptText("\u5f00\u59cb\uff08yyyy-MM-dd HH:mm \u6216 HH:mm\uff09"); // 开始（yyyy-MM-dd HH:mm 或 HH:mm）
-        end.setPromptText("\u7ed3\u675f\uff08yyyy-MM-dd HH:mm \u6216 HH:mm\uff09"); // 结束（yyyy-MM-dd HH:mm 或 HH:mm）
+        start.setPromptText("开始时间（例如：2026-03-24 10:30 或 10:30）"); // 开始时间（例如：2026-03-24 10:30 或 10:30）
+        end.setPromptText("结束时间（例如：2026-03-24 12:30 或 12:30）"); // 结束时间（例如：2026-03-24 12:30 或 12:30）
         TextArea out = new TextArea();
 
         Button queryAvailable = new Button("\u67e5\u8be2\u53ef\u7528\u8f66\u4f4d"); // 查询可用车位
         queryAvailable.setOnAction(e -> {
             try {
-                List<ParkingSpace> rows = parkingSpaceService.queryAvailableSpaces(requireDateTime(start, "\u5f00\u59cb\u65f6\u95f4"), requireDateTime(end, "\u7ed3\u675f\u65f6\u95f4"), 1, 30); // 开始时间 | 结束时间
-                out.appendText("\u53ef\u7528\u8f66\u4f4d\u6570\u91cf=" + rows.size() + "\n\n"); // 可用车位数量=
+                long lid = requireLong(lotId, "停车场ID");
+                String typeCode = spaceTypeCode(reserveType.getValue());
+                LocalDateTime startDt = requireDateTime(start, "开始时间");
+                LocalDateTime endDt = requireDateTime(end, "结束时间");
+                List<ParkingSpace> rows = queryAvailableByLotAndType(startDt, endDt, lid, typeCode);
+                out.appendText("停车场ID=" + lid + "，类型=" + reserveType.getValue() + "，可用车位数量=" + rows.size() + "\n\n");
                 for (ParkingSpace s : rows) {
                     out.appendText(
                             "\u8f66\u4f4dID=" + s.getSpaceId() // 车位ID=
@@ -228,8 +234,14 @@ public class DashboardFactory {
         Button reserve = new Button("\u63d0\u4ea4\u9884\u7ea6"); // 提交预约
         reserve.setOnAction(e -> {
             try {
-                long rid = reservationService.reserve(user.getUserId(), requireLong(spaceId, "\u8f66\u4f4dID"), requireDateTime(start, "\u5f00\u59cb\u65f6\u95f4"), requireDateTime(end, "\u7ed3\u675f\u65f6\u95f4")); // 车位ID | 开始时间 | 结束时间
-                out.appendText("\u9884\u7ea6\u6210\u529f\uff0c\u9884\u7ea6ID=" + rid + "\n"); // 预约成功，预约ID=
+                ReservationService.AutoReserveResult result = reservationService.reserveByLotAndType(
+                        user.getUserId(),
+                        requireLong(lotId, "停车场ID"),
+                        spaceTypeCode(reserveType.getValue()),
+                        requireDateTime(start, "开始时间"),
+                        requireDateTime(end, "结束时间")
+                );
+                out.appendText("预约成功，预约ID=" + result.getReservationId() + "，系统分配车位ID=" + result.getSpaceId() + "\n");
             } catch (Exception ex) {
                 out.appendText(formatError(ex) + "\n");
             }
@@ -247,7 +259,7 @@ public class DashboardFactory {
                     return;
                 }
                 long rid = Long.parseLong(input.get().trim());
-                reservationService.cancel(rid, user.getUserId(), requireLong(spaceId, "\u8f66\u4f4dID")); // 车位ID
+                reservationService.cancel(rid, user.getUserId());
                 out.appendText("\u53d6\u6d88\u6210\u529f\uff0c\u9884\u7ea6ID=" + rid + "\n"); // 取消成功，预约ID=
             } catch (NumberFormatException ex) {
                 out.appendText("\u9519\u8bef\uff1a\u9884\u7ea6ID\u5fc5\u987b\u662f\u6570\u5b57\n"); // 错误：预约ID必须是数字\\n
@@ -277,10 +289,43 @@ public class DashboardFactory {
             }
         });
 
+        Button lotInfo = new Button("停车场信息"); // 停车场信息
+        lotInfo.setOnAction(e -> {
+            try {
+                String kw = lotId.getText() == null ? "" : lotId.getText().trim();
+                List<ParkingLot> lots = parkingLotService.queryLots(kw, 1, 100);
+                if (lots.isEmpty()) {
+                    out.appendText("未找到停车场信息\n\n");
+                    return;
+                }
+                for (ParkingLot lot : lots) {
+                    List<ParkingSpace> spaces = loadAllSpacesByLot(lot.getLotId());
+                    long ground = spaces.stream().filter(s -> "GROUND".equalsIgnoreCase(s.getType())).count();
+                    long under = spaces.stream().filter(s -> "UNDERGROUND".equalsIgnoreCase(s.getType())).count();
+                    long free = spaces.stream().filter(s -> "FREE".equalsIgnoreCase(s.getStatus())).count();
+                    long reserved = spaces.stream().filter(s -> "RESERVED".equalsIgnoreCase(s.getStatus())).count();
+                    long occupied = spaces.stream().filter(s -> "OCCUPIED".equalsIgnoreCase(s.getStatus())).count();
+                    out.appendText("停车场ID=" + lot.getLotId()
+                            + "，名称=" + lot.getLotName()
+                            + "，地址=" + lot.getAddress()
+                            + "，营业时间=" + lot.getOpenTime() + "~" + lot.getCloseTime()
+                            + "，总车位数=" + lot.getTotalSpaces()
+                            + "，地上=" + ground
+                            + "，地下=" + under
+                            + "，空闲=" + free
+                            + "，已预约=" + reserved
+                            + "，占用=" + occupied
+                            + "\n\n");
+                }
+            } catch (Exception ex) {
+                out.appendText(formatError(ex) + "\n");
+            }
+        });
+
         VBox body = new VBox(10,
-                new HBox(8, spaceId),
+                new HBox(8, lotId, reserveType),
                 new HBox(8, new Label("\u5f00\u59cb"), start, new Label("\u7ed3\u675f"), end), // 开始 | 结束
-                new HBox(8, queryAvailable, reserve, cancel, myReservations),
+                new HBox(8, queryAvailable, reserve, cancel, myReservations, lotInfo),
                 out);
         body.setPadding(new Insets(10));
         Tab tab = new Tab("\u9884\u7ea6\u7ba1\u7406", body); // 预约管理
@@ -292,10 +337,12 @@ public class DashboardFactory {
         reservationId.setPromptText("\u9884\u7ea6ID\uff08\u53ef\u9009\uff0c\u65e0\u9884\u7ea6\u53ef\u7559\u7a7a\uff09"); // 预约ID（可选，无预约可留空）
         reservationId.setPrefWidth(320);
         reservationId.setMinWidth(320);
-        TextField spaceId = new TextField();
-        spaceId.setPromptText("\u8f66\u4f4dID\uff08\u5165\u573a\u5fc5\u586b\uff09"); // 车位ID（入场必填）
-        spaceId.setPrefWidth(260);
-        spaceId.setMinWidth(260);
+        TextField lotId = new TextField();
+        lotId.setPromptText("停车场ID（必填）"); // 停车场ID（必填）
+        lotId.setPrefWidth(190);
+        ComboBox<String> entryType = new ComboBox<>(FXCollections.observableArrayList("地上", "地下")); // 地上 | 地下
+        entryType.setValue("地上"); // 地上
+        entryType.setPrefWidth(110);
         TextField recordId = new TextField();
         recordId.setPromptText("\u505c\u8f66\u8bb0\u5f55ID"); // 停车记录ID
         TextArea out = new TextArea();
@@ -309,9 +356,14 @@ public class DashboardFactory {
                 if (!reserveText.isEmpty()) {
                     reserveId = Long.parseLong(reserveText);
                 }
-                long sid = requireLong(spaceId, "\u8f66\u4f4dID"); // 车位ID
-                long rid = parkingRecordService.entry(reserveId, user.getUserId(), sid, LocalDateTime.now());
-                out.appendText("\u5165\u573a\u767b\u8bb0\u6210\u529f\uff0c\u505c\u8f66\u8bb0\u5f55ID=" + rid + "\n"); // 入场登记成功，停车记录ID=
+                ParkingRecordService.AutoEntryResult result = parkingRecordService.entryByLotAndType(
+                        reserveId,
+                        user.getUserId(),
+                        requireLong(lotId, "停车场ID"),
+                        spaceTypeCode(entryType.getValue()),
+                        LocalDateTime.now()
+                );
+                out.appendText("入场登记成功，停车记录ID=" + result.getRecordId() + "，系统分配车位ID=" + result.getSpaceId() + "\n");
             } catch (NumberFormatException ex) {
                 out.appendText("\u9519\u8bef\uff1a\u9884\u7ea6ID\u5fc5\u987b\u662f\u6570\u5b57\n"); // 错误：预约ID必须是数字\\n
             } catch (Exception ex) {
@@ -364,7 +416,7 @@ public class DashboardFactory {
 
         VBox body = new VBox(10,
                 sectionBox("\u505c\u8f66\u5165\u573a", // 停车入场
-                        new HBox(8, reservationId, spaceId, entry)),
+                        new HBox(8, reservationId, lotId, entryType, entry)),
                 sectionBox("\u51fa\u573a\u7f34\u8d39", // 出场缴费
                         new HBox(8, recordId, exitAndPay)),
                 sectionBox("\u67e5\u8be2", // 查询
@@ -666,7 +718,7 @@ public class DashboardFactory {
                             + "\uff0c\u603b\u8f66\u4f4d\u6570=" + lot.getTotalSpaces() // ，总车位数=
                             + "\uff0c\u8425\u4e1a\u65f6\u95f4=" + lot.getOpenTime() + "~" + lot.getCloseTime() // ，营业时间=
                             + "\uff0c\u5907\u6ce8=" + lot.getDescription() // ，备注=
-                            + "\n");
+                            + "\n\n");
                 }
             } catch (Exception ex) {
                 out.appendText(formatError(ex) + "\n");
@@ -887,7 +939,7 @@ public class DashboardFactory {
                             + "\uff0c\u7c7b\u578b=" + spaceTypeLabel(s.getType()) // ，类型=
                             + "\uff0c\u72b6\u6001=" + displayStatus // ，状态=
                             + "\uff0c\u5171\u4eab\u65f6\u95f4=" + s.getShareStartTime() + "~" + s.getShareEndTime() // ，共享时间=
-                            + "\n");
+                            + "\n\n");
                 }
             } catch (Exception ex) {
                 out.appendText(formatError(ex) + "\n");
@@ -1034,7 +1086,7 @@ public class DashboardFactory {
                             + "\uff0c\u56fa\u5b9a\u4ef7=" + r.getFixedPrice() // ，固定价=
                             + "\uff0c\u9002\u7528\u8f66\u4f4d=" + spaceTypeLabel(r.getApplicableSpaceType()) // ，适用车位=
                             + "\uff0c\u72b6\u6001=" + enabledLabel(r.getStatus()) // ，状态=
-                            + "\n");
+                            + "\n\n");
                 }
             } catch (Exception ex) {
                 out.appendText(formatError(ex) + "\n");
@@ -1127,7 +1179,7 @@ public class DashboardFactory {
     }
     private Tab settlementTab() {
         TextField revenueId = new TextField();
-        revenueId.setPromptText("\u7ed3\u7b97ID"); // 结算ID
+        revenueId.setPromptText("\u6536\u76ca\u8bb0\u5f55ID\uff08revenue_id\uff09"); // 收益记录ID（revenue_id）
         ComboBox<String> status = new ComboBox<>(FXCollections.observableArrayList("\u5168\u90e8", "\u672a\u7ed3\u7b97", "\u5df2\u7ed3\u7b97")); // 全部 | 未结算 | 已结算
         status.setValue("\u5168\u90e8"); // 全部
         TextArea out = new TextArea();
@@ -1138,7 +1190,7 @@ public class DashboardFactory {
             try {
                 List<Map<String, Object>> rows = revenueService.queryRevenueForAdmin(settleStatusCode(status.getValue()), 1, 50);
                 out.clear();
-                for (Map<String, Object> row : rows) out.appendText(formatRowMap(row) + "\n");
+                for (Map<String, Object> row : rows) out.appendText(formatRowMap(row) + "\n\n");
             } catch (Exception ex) {
                 out.appendText(formatError(ex) + "\n");
             }
@@ -1147,7 +1199,7 @@ public class DashboardFactory {
 
         Button approve = new Button("\u5ba1\u6838\u7ed3\u7b97"); // 审核结算
         approve.setOnAction(e -> run(
-                () -> revenueService.settleRevenue(requireLong(revenueId, "\u7ed3\u7b97ID")),
+                () -> revenueService.settleRevenue(requireLong(revenueId, "\u6536\u76ca\u8bb0\u5f55ID")), // 收益记录ID
                 out,
                 () -> {
                     revenueId.clear();
@@ -1155,8 +1207,8 @@ public class DashboardFactory {
                 },
                 LOG_UPDATE,
                 "结算审核",
-                () -> "审核结算ID=" + (revenueId.getText() == null ? "" : revenueId.getText().trim())
-        )); // 结算ID
+                () -> "审核收益记录ID=" + (revenueId.getText() == null ? "" : revenueId.getText().trim())
+        )); // 收益记录ID
 
         Label queryHint = new Label("\u67e5\u8be2\u8bf4\u660e\uff1a\u53ef\u6309\u7ed3\u7b97\u72b6\u6001\u7b5b\u9009\uff0c\u70b9\u51fb\u201c\u67e5\u8be2\u7ed3\u7b97\u8bb0\u5f55\u201d\u540e\u5217\u51fa\u7ed3\u679c\u3002"); // 查询说明：可按结算状态筛选，点击“查询结算记录”后列出结果。
         VBox body = new VBox(10,
@@ -1227,10 +1279,10 @@ public class DashboardFactory {
                 List<Map<String, Object>> rows = operationLogService.queryLogs(keyword.getText(), logCategoryCode(categoryBox.getValue()), pageNo[0], pageSize);
                 out.clear();
                 if (rows.isEmpty()) {
-                    out.appendText("\u6682\u65e0\u64cd\u4f5c\u65e5\u5fd7\u8bb0\u5f55\n"); // 暂无操作日志记录
+                    out.appendText("\u6682\u65e0\u64cd\u4f5c\u65e5\u5fd7\u8bb0\u5f55\n\n"); // 暂无操作日志记录
                 }
                 for (Map<String, Object> row : rows) {
-                    out.appendText(formatRowMap(row) + "\n");
+                    out.appendText(formatRowMap(row) + "\n\n");
                 }
                 pageInfo.setText("\u7b2c" + pageNo[0] + "\u9875\uff08\u6bcf\u9875" + pageSize + "\u6761\uff0c\u5f53\u524d" + rows.size() + "\u6761\uff09"); // 第x页（每页x条，当前x条）
             } catch (Exception ex) {
@@ -1416,8 +1468,8 @@ public class DashboardFactory {
         if ("Fixed rule requires fixedPrice".equalsIgnoreCase(m)) return "\u6309\u6b21\u8ba1\u8d39\u9700\u586b\u5199\u56fa\u5b9a\u4ef7"; // 按次计费需填写固定价
         if ("chargeType must be HOURLY or FIXED".equalsIgnoreCase(m)) return "\u8ba1\u8d39\u65b9\u5f0f\u53ea\u80fd\u4e3a HOURLY \u6216 FIXED"; // 计费方式只能为 HOURLY 或 FIXED
         if ("applicableSpaceType is required".equalsIgnoreCase(m)) return "\u9002\u7528\u8f66\u4f4d\u7c7b\u578b\u4e0d\u80fd\u4e3a\u7a7a"; // 适用车位类型不能为空
-        if ("revenueId is required".equalsIgnoreCase(m)) return "\u7ed3\u7b97ID\u4e0d\u80fd\u4e3a\u7a7a"; // 结算ID不能为空
-        if ("Revenue not found or already settled".equalsIgnoreCase(m)) return "\u7ed3\u7b97\u8bb0\u5f55\u4e0d\u5b58\u5728\u6216\u5df2\u7ed3\u7b97"; // 结算记录不存在或已结算
+        if ("revenueId is required".equalsIgnoreCase(m)) return "\u6536\u76ca\u8bb0\u5f55ID\u4e0d\u80fd\u4e3a\u7a7a"; // 收益记录ID不能为空
+        if ("Revenue not found or already settled".equalsIgnoreCase(m)) return "\u6536\u76ca\u8bb0\u5f55\u4e0d\u5b58\u5728\u6216\u5df2\u7ed3\u7b97"; // 收益记录不存在或已结算
 
 
         if ("Insert parking lot failed".equalsIgnoreCase(m)) return "\u65b0\u589e\u505c\u8f66\u573a\u5931\u8d25"; // 新增停车场失败
@@ -1440,7 +1492,7 @@ public class DashboardFactory {
             if ("income".equals(type)) rows = reportService.incomeByLot();
             else rows = reportService.reservationCountBySpace();
             out.clear();
-            for (Map<String, Object> row : rows) out.appendText(formatRowMap(row) + "\n");
+            for (Map<String, Object> row : rows) out.appendText(formatRowMap(row) + "\n\n");
         } catch (SQLException ex) {
             out.appendText(formatError(ex) + "\n");
         }
@@ -1469,12 +1521,12 @@ public class DashboardFactory {
             }
 
             out.clear();
-            out.appendText("\u7edf\u8ba1\u6a21\u5f0f\uff1a" + mode + "\n"); // 统计模式：
+            out.appendText("\u7edf\u8ba1\u6a21\u5f0f\uff1a" + mode + "\n\n"); // 统计模式：
             if (rows.isEmpty()) {
-                out.appendText("\u6682\u65e0\u5165\u573a\u8bb0\u5f55\n"); // 暂无入场记录\\n
+                out.appendText("\u6682\u65e0\u5165\u573a\u8bb0\u5f55\n\n"); // 暂无入场记录\\n
                 return;
             }
-            for (Map<String, Object> row : rows) out.appendText(formatRowMap(row) + "\n");
+            for (Map<String, Object> row : rows) out.appendText(formatRowMap(row) + "\n\n");
         } catch (SQLException ex) {
             out.appendText(formatError(ex) + "\n");
         }
@@ -1488,6 +1540,49 @@ public class DashboardFactory {
         } catch (NumberFormatException ex) {
             return 0;
         }
+    }
+
+    private List<ParkingSpace> queryAvailableByLotAndType(LocalDateTime start, LocalDateTime end, Long lotId, String typeCode) throws SQLException {
+        final int pageSize = 200;
+        int pageNo = 1;
+        List<ParkingSpace> all = new ArrayList<>();
+        while (true) {
+            List<ParkingSpace> page = parkingSpaceService.queryAvailableSpaces(start, end, pageNo, pageSize);
+            if (page == null || page.isEmpty()) {
+                break;
+            }
+            for (ParkingSpace s : page) {
+                if (lotId.equals(s.getLotId()) && typeCode.equalsIgnoreCase(s.getType())) {
+                    all.add(s);
+                }
+            }
+            if (page.size() < pageSize) {
+                break;
+            }
+            pageNo++;
+            if (pageNo > 200) break;
+        }
+        all.sort(Comparator.comparingLong(s -> s.getSpaceId() == null ? Long.MAX_VALUE : s.getSpaceId()));
+        return all;
+    }
+
+    private List<ParkingSpace> loadAllSpacesByLot(Long lotId) throws SQLException {
+        final int pageSize = 200;
+        int pageNo = 1;
+        List<ParkingSpace> all = new ArrayList<>();
+        while (true) {
+            List<ParkingSpace> page = parkingSpaceService.querySpaces("", "", lotId, pageNo, pageSize);
+            if (page == null || page.isEmpty()) {
+                break;
+            }
+            all.addAll(page);
+            if (page.size() < pageSize) {
+                break;
+            }
+            pageNo++;
+            if (pageNo > 200) break;
+        }
+        return all;
     }
 
     private String localizeRowText(String text) {

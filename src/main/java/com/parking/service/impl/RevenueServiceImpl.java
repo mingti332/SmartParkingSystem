@@ -37,10 +37,10 @@ public class RevenueServiceImpl implements RevenueService {
     @Override
     public void settleRevenue(Long revenueId) throws SQLException {
         if (revenueId == null) {
-            throw new ServiceException("结算ID不能为空");
+            throw new ServiceException("收益记录ID不能为空");
         }
         if (revenueRecordDao.settleById(revenueId) == 0) {
-            throw new ServiceException("结算记录不存在或已结算");
+            throw new ServiceException("收益记录不存在或已结算");
         }
     }
 }

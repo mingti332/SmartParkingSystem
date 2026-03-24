@@ -18,7 +18,10 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 //停车与支付模块
 public class ParkingRecordServiceImpl implements ParkingRecordService {
     private final ParkingRecordDao parkingRecordDao = new ParkingRecordDaoImpl();
@@ -87,6 +90,65 @@ public class ParkingRecordServiceImpl implements ParkingRecordService {
     }
 
     @Override
+    public AutoEntryResult entryByLotAndType(Long reservationId, Long userId, Long lotId, String spaceType, LocalDateTime entryTime) throws SQLException {
+        if (userId == null) {
+            throw new ServiceException("用户ID不能为空");
+        }
+        if (lotId == null) {
+            throw new ServiceException("停车场ID不能为空");
+        }
+        String typeCode = normalizeSpaceType(spaceType);
+        LocalDateTime now = entryTime == null ? LocalDateTime.now() : entryTime;
+
+        List<ParkingSpace> matched = loadSpacesByLotAndType(lotId, typeCode);
+        if (matched.isEmpty()) {
+            throw new ServiceException("该停车场不存在该类型车位");
+        }
+
+        Long selectedSpaceId;
+        if (reservationId != null) {
+            try (Connection conn = DbUtil.getConnection()) {
+                Reservation reservation = reservationDao.findById(conn, reservationId);
+                if (reservation == null || !userId.equals(reservation.getUserId())) {
+                    throw new ServiceException("预约记录不存在或不属于当前用户");
+                }
+                ParkingSpace reservedSpace = parkingSpaceDao.findById(conn, reservation.getSpaceId());
+                if (reservedSpace == null) {
+                    throw new ServiceException("未找到对应车位");
+                }
+                if (!lotId.equals(reservedSpace.getLotId()) || !typeCode.equalsIgnoreCase(reservedSpace.getType())) {
+                    throw new ServiceException("预约车位与所选停车场或类型不匹配");
+                }
+                selectedSpaceId = reservedSpace.getSpaceId();
+            }
+            long recordId = entry(reservationId, userId, selectedSpaceId, now);
+            return new AutoEntryResult(recordId, selectedSpaceId);
+        } else {
+            List<Long> candidateSpaceIds = pickEntrySpaceCandidates(matched, now);
+            if (candidateSpaceIds.isEmpty()) {
+                boolean allOccupied = matched.stream().allMatch(s -> "OCCUPIED".equalsIgnoreCase(s.getStatus()));
+                if (allOccupied) {
+                    throw new ServiceException("该类型车位已满");
+                }
+                throw new ServiceException("该类型车位当前已预约或不可入场");
+            }
+            for (Long candidateSpaceId : candidateSpaceIds) {
+                try {
+                    long recordId = entry(null, userId, candidateSpaceId, now);
+                    return new AutoEntryResult(recordId, candidateSpaceId);
+                } catch (ServiceException ex) {
+                    String m = ex.getMessage() == null ? "" : ex.getMessage();
+                    if (m.contains("预约已满") || m.contains("已占用") || m.contains("未到该车位共享开始时间") || m.contains("已超过该车位共享结束时间")) {
+                        continue;
+                    }
+                    throw ex;
+                }
+            }
+            throw new ServiceException("该类型车位当前已预约或不可入场");
+        }
+    }
+
+    @Override
     public BigDecimal exitAndPay(Long recordId, String payMethod) throws SQLException {
         try (Connection conn = DbUtil.getConnection()) {
             conn.setAutoCommit(false);
@@ -149,5 +211,46 @@ public class ParkingRecordServiceImpl implements ParkingRecordService {
     @Override
     public List<ParkingRecord> searchParkingRecords(Long userId, Long spaceId, int pageNo, int pageSize) throws SQLException {
         return parkingRecordDao.search(userId, spaceId, pageNo, pageSize);
+    }
+
+    private String normalizeSpaceType(String input) {
+        String v = input == null ? "" : input.trim().toUpperCase();
+        if ("GROUND".equals(v) || "UNDERGROUND".equals(v)) {
+            return v;
+        }
+        if ("地上".equals(input)) return "GROUND";
+        if ("地下".equals(input)) return "UNDERGROUND";
+        throw new ServiceException("车位类型不能为空");
+    }
+
+    private List<ParkingSpace> loadSpacesByLotAndType(Long lotId, String typeCode) throws SQLException {
+        final int pageSize = 200;
+        int pageNo = 1;
+        List<ParkingSpace> all = new java.util.ArrayList<>();
+        while (true) {
+            List<ParkingSpace> page = parkingSpaceDao.search("", "", lotId, pageNo, pageSize);
+            if (page == null || page.isEmpty()) break;
+            all.addAll(page);
+            if (page.size() < pageSize) break;
+            pageNo++;
+            if (pageNo > 200) break;
+        }
+        return all.stream()
+                .filter(s -> typeCode.equalsIgnoreCase(s.getType()))
+                .sorted(Comparator.comparingLong(s -> s.getSpaceId() == null ? Long.MAX_VALUE : s.getSpaceId()))
+                .collect(Collectors.toList());
+    }
+
+    private List<Long> pickEntrySpaceCandidates(List<ParkingSpace> spaces, LocalDateTime now) {
+        LocalTime nowTime = now.toLocalTime();
+        List<Long> ids = new java.util.ArrayList<>();
+        for (ParkingSpace s : spaces) {
+            if (s.getSpaceId() == null) continue;
+            if ("OCCUPIED".equalsIgnoreCase(s.getStatus())) continue;
+            if (s.getShareStartTime() != null && nowTime.isBefore(s.getShareStartTime())) continue;
+            if (s.getShareEndTime() != null && !nowTime.isBefore(s.getShareEndTime())) continue;
+            ids.add(s.getSpaceId());
+        }
+        return ids;
     }
 }
