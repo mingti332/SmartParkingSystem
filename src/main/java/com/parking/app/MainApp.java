@@ -18,6 +18,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
+import java.net.URL;
 
 public class MainApp extends Application {
 
@@ -143,17 +144,25 @@ public class MainApp extends Application {
                 log
         );
         root.setPadding(new Insets(16));
+        root.getStyleClass().add("login-root");
 
         Scene loginScene = new Scene(root, 820, 460);
-        loginScene.getRoot().setStyle("-fx-font-size: 14px;");
+        applyTheme(loginScene);
         stage.setScene(loginScene);
     }
 
     private void showDashboard(Stage stage, User user) {
         DashboardFactory factory = new DashboardFactory();
         Scene scene = new Scene(factory.createMainView(user, () -> showLogin(stage)), 1100, 760);
-        scene.getRoot().setStyle("-fx-font-size: 14px;");
+        applyTheme(scene);
         stage.setScene(scene);
+    }
+
+    private void applyTheme(Scene scene) {
+        URL css = MainApp.class.getResource("/ui/app-theme.css");
+        if (css != null) {
+            scene.getStylesheets().add(css.toExternalForm());
+        }
     }
 
     private String localizeErrorMessage(Exception ex) {

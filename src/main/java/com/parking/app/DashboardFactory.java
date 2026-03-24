@@ -58,11 +58,15 @@ public class DashboardFactory {
 
         BorderPane root = new BorderPane();
         root.setPadding(new Insets(10));
+        root.getStyleClass().add("app-root");
 
         Label userLabel = new Label("\u5f53\u524d\u7528\u6237\uff1a" + user.getUsername() + "\uff08" + roleLabel(user.getRole()) + "\uff09"); // 当前用户： | （ | ）
+        userLabel.getStyleClass().add("top-user-label");
         Button logoutButton = new Button("\u9000\u51fa\u767b\u5f55"); // 退出登录
         logoutButton.setOnAction(e -> onLogout.run());
-        root.setTop(new HBox(12, userLabel, logoutButton));
+        HBox topBar = new HBox(12, userLabel, logoutButton);
+        topBar.getStyleClass().add("top-bar");
+        root.setTop(topBar);
         addOperationLog(LOG_LOGIN, formatModuleLog("登录", "用户登录系统：" + user.getUsername())); // 登录 | 用户登录系统：
 
         String role = user.getRole() == null ? "" : user.getRole().toUpperCase();
@@ -2010,12 +2014,12 @@ public class DashboardFactory {
 
     private VBox sectionBox(String title, Node... content) {
         Label header = new Label(title);
-        header.setStyle("-fx-font-weight: bold; -fx-text-fill: #1f2d3d;");
+        header.getStyleClass().add("section-title");
         VBox box = new VBox(8);
         box.getChildren().add(header);
         box.getChildren().addAll(content);
         box.setPadding(new Insets(10));
-        box.setStyle("-fx-background-color: #f8fafc; -fx-border-color: #d0d7de; -fx-border-radius: 6; -fx-background-radius: 6;");
+        box.getStyleClass().add("section-card");
         return box;
     }
 }

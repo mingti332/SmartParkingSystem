@@ -1,0 +1,131 @@
+/* 智能停车系统统一主题 */
+
+.root {
+    -fx-font-family: "Microsoft YaHei UI", "Segoe UI", "PingFang SC";
+    -fx-font-size: 14px;
+    -fx-background-color: linear-gradient(to bottom, #f3f7ff 0%, #eef3f9 100%);
+}
+
+.app-root {
+    -fx-background-color: transparent;
+}
+
+.login-root {
+    -fx-background-color: rgba(255, 255, 255, 0.92);
+    -fx-background-radius: 14;
+    -fx-border-color: #d7e2f3;
+    -fx-border-radius: 14;
+    -fx-border-width: 1;
+}
+
+.top-bar {
+    -fx-padding: 8 6 10 6;
+    -fx-spacing: 12;
+    -fx-alignment: center-left;
+}
+
+.top-user-label {
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #16314f;
+}
+
+.section-card {
+    -fx-background-color: rgba(255, 255, 255, 0.94);
+    -fx-border-color: #d6e0ee;
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+    -fx-padding: 12;
+}
+
+.section-title {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #0f2a46;
+}
+
+.button {
+    -fx-background-color: linear-gradient(to bottom, #fefefe 0%, #edf3fa 100%);
+    -fx-border-color: #b8c8db;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-padding: 6 14 6 14;
+    -fx-text-fill: #13365a;
+    -fx-font-weight: bold;
+}
+
+.button:hover {
+    -fx-background-color: linear-gradient(to bottom, #ffffff 0%, #e4eefb 100%);
+}
+
+.button:pressed {
+    -fx-background-color: #dde9f7;
+}
+
+.text-field,
+.password-field,
+.combo-box,
+.date-picker,
+.text-area {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #c7d3e2;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+}
+
+.text-field:focused,
+.password-field:focused,
+.combo-box:focused,
+.date-picker:focused,
+.text-area:focused {
+    -fx-border-color: #4a90e2;
+}
+
+.text-area .content {
+    -fx-background-color: #ffffff;
+    -fx-background-radius: 8;
+}
+
+.tab-pane {
+    -fx-tab-min-height: 34px;
+}
+
+.tab-pane .tab-header-area .tab-header-background {
+    -fx-background-color: rgba(236, 243, 252, 0.95);
+}
+
+.tab-pane .tab {
+    -fx-background-color: #ecf3fb;
+    -fx-background-radius: 8 8 0 0;
+    -fx-border-color: #c6d7ea;
+    -fx-border-width: 1 1 0 1;
+}
+
+.tab-pane .tab:selected {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #7ea6d6;
+}
+
+.table-view {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #c9d8ea;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+}
+
+.table-view .column-header-background {
+    -fx-background-color: linear-gradient(to bottom, #f1f6fd 0%, #e6eef9 100%);
+}
+
+.table-view .column-header,
+.table-view .filler {
+    -fx-border-color: #d5e0ef;
+}
+
+.scroll-pane {
+    -fx-background-color: transparent;
+}
+
+.scroll-pane > .viewport {
+    -fx-background-color: transparent;
+}

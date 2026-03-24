@@ -20,7 +20,7 @@ public class ParkingLotServiceImpl implements ParkingLotService {
         }
         if (lot.getAddress() == null || lot.getAddress().isBlank()) {
             throw new ServiceException("停车场地址不能为空");
-        }
+        } 
         if (lot.getTotalSpaces() == null || lot.getTotalSpaces() <= 0) {
             throw new ServiceException("总车位数必须大于0");
         }
