@@ -372,6 +372,19 @@ public class DashboardFactory {
             return cb;
         };
 
+        // Helper to resolve lot ID from ComboBox (tries getValue, then editor text fuzzy match)
+        java.util.function.Function<ComboBox<String>, Long> resolveLotId = (cb) -> {
+            String sel = cb.getValue();
+            if (sel != null && lotNameToId.containsKey(sel)) return lotNameToId.get(sel);
+            String editorText = cb.getEditor().getText();
+            if (editorText != null && !editorText.isEmpty()) {
+                for (String key : lotNameToId.keySet()) {
+                    if (key.toLowerCase().contains(editorText.toLowerCase())) return lotNameToId.get(key);
+                }
+            }
+            return null;
+        };
+
         // === Query section: dual tables for ground/underground ===
         ComboBox<String> queryLotCombo = createFilterableCombo.apply(allLotItems);
         if (!allLotItems.isEmpty()) queryLotCombo.setValue(allLotItems.get(0));
@@ -415,22 +428,18 @@ public class DashboardFactory {
         Button queryBtn = new Button("查询可用车位");
         queryBtn.setOnAction(e -> {
             try {
-                String sel = queryLotCombo.getValue();
-                if (sel == null || !lotNameToId.containsKey(sel)) {
-                    out.appendText("请选择有效的停车场\n");
-                    return;
-                }
-                long lid = lotNameToId.get(sel);
-                List<ParkingSpace> all = loadAllSpacesByLot(lid);
+                Long lid = resolveLotId.apply(queryLotCombo);
+                if (lid == null) { out.appendText("请从下拉列表中选择有效的停车场\n"); return; }
+                List<ParkingSpace> freeSpaces = parkingSpaceService.querySpaces("", "FREE", lid, 1, 500);
                 List<ParkingSpace> ground = new java.util.ArrayList<>();
                 List<ParkingSpace> under = new java.util.ArrayList<>();
-                for (ParkingSpace s : all) {
+                for (ParkingSpace s : freeSpaces) {
                     if ("GROUND".equalsIgnoreCase(s.getType())) ground.add(s);
                     else under.add(s);
                 }
                 groundTable.setItems(FXCollections.observableArrayList(ground));
                 underTable.setItems(FXCollections.observableArrayList(under));
-                out.appendText("停车场: " + sel + "  地上=" + ground.size() + "个  地下=" + under.size() + "个\n");
+                out.appendText("停车场: " + queryLotCombo.getEditor().getText() + "  地上空闲=" + ground.size() + "个  地下空闲=" + under.size() + "个\n");
             } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
         });
 
@@ -456,12 +465,8 @@ public class DashboardFactory {
         Button reserveBtn = new Button("提交预约");
         reserveBtn.setOnAction(e -> {
             try {
-                String sel = resvLotCombo.getValue();
-                if (sel == null || !lotNameToId.containsKey(sel)) {
-                    out.appendText("请选择有效的停车场\n");
-                    return;
-                }
-                long lid = lotNameToId.get(sel);
+                Long lid = resolveLotId.apply(resvLotCombo);
+                if (lid == null) { out.appendText("请从下拉列表中选择有效的停车场\n"); return; }
                 String typeCode = spaceTypeCode(resvTypeCombo.getValue());
                 LocalTime st = LocalTime.parse(startTimeCombo.getValue());
                 LocalTime et = LocalTime.parse(endTimeCombo.getValue());
@@ -533,12 +538,8 @@ public class DashboardFactory {
         Button lotInfoBtn = new Button("停车场信息");
         lotInfoBtn.setOnAction(e -> {
             try {
-                String sel = resvLotCombo.getValue();
-                if (sel == null || !lotNameToId.containsKey(sel)) {
-                    out.appendText("请先在预约区选择停车场\n");
-                    return;
-                }
-                long lid = lotNameToId.get(sel);
+                Long lid = resolveLotId.apply(resvLotCombo);
+                if (lid == null) { out.appendText("请先在预约区选择停车场\n"); return; }
                 List<ParkingLot> lots = parkingLotService.queryLots(String.valueOf(lid), 1, 1);
                 if (lots.isEmpty()) { out.appendText("未找到停车场\n"); return; }
                 ParkingLot lot = lots.get(0);
