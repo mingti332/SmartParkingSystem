@@ -346,35 +346,26 @@ public class DashboardFactory {
             }
         } catch (Exception ex) { /* ignore */ }
 
-        // Helper to create filterable ComboBox (with debounce for performance)
+        // Helper to create filterable ComboBox
         java.util.function.Function<java.util.List<String>, ComboBox<String>> createFilterableCombo = (items) -> {
             ComboBox<String> cb = new ComboBox<>();
             cb.setEditable(true);
             cb.setPrefWidth(240);
             cb.setVisibleRowCount(8);
-            final javafx.collections.ObservableList<String> backingList = FXCollections.observableArrayList(items);
+            javafx.collections.ObservableList<String> backingList = FXCollections.observableArrayList(items);
             cb.setItems(backingList);
-
-            // Use a single-thread debounce via a flag
-            final boolean[] pending = {false};
             cb.getEditor().textProperty().addListener((obs, oldVal, newVal) -> {
-                if (pending[0]) return;
-                pending[0] = true;
-                javafx.application.Platform.runLater(() -> {
-                    pending[0] = false;
-                    String text = cb.getEditor().getText();
-                    if (text == null) text = "";
-                    if (text.isEmpty()) {
-                        backingList.setAll(items);
-                    } else {
-                        String filter = text.toLowerCase();
-                        java.util.List<String> filtered = new java.util.ArrayList<>();
-                        for (String item : items) {
-                            if (item.toLowerCase().contains(filter)) filtered.add(item);
-                        }
-                        backingList.setAll(filtered);
+                String text = (newVal == null) ? "" : newVal;
+                if (text.isEmpty()) {
+                    backingList.setAll(items);
+                } else {
+                    String filter = text.toLowerCase();
+                    java.util.List<String> filtered = new java.util.ArrayList<>();
+                    for (String item : items) {
+                        if (item.toLowerCase().contains(filter)) filtered.add(item);
                     }
-                });
+                    backingList.setAll(filtered);
+                }
             });
             return cb;
         };
