@@ -1874,91 +1874,145 @@ public class DashboardFactory {
 
     private Tab operationLogTab() {
         TextField keyword = new TextField();
-        keyword.setPromptText("\u5173\u952e\u5b57\uff08\u65e5\u5fd7ID/\u7528\u6237ID/\u7528\u6237\u540d/\u64cd\u4f5c\u7c7b\u578b/\u64cd\u4f5c\u63cf\u8ff0\uff09"); // 关键字（日志ID/用户ID/用户名/操作类型/操作描述）
+        keyword.setPromptText("关键字（日志ID/用户ID/用户名/操作类型/操作描述）");
         keyword.setPrefWidth(420);
-        ComboBox<String> categoryBox = new ComboBox<>(FXCollections.observableArrayList("\u5168\u90e8", "\u65b0\u589e", "\u5220\u9664", "\u4fee\u6539", "\u767b\u5f55")); // 全部 | 新增 | 删除 | 修改 | 登录
-        categoryBox.setValue("\u5168\u90e8"); // 全部
+        ComboBox<String> categoryBox = new ComboBox<>(FXCollections.observableArrayList("全部", "新增", "删除", "修改", "登录"));
+        categoryBox.setValue("全部");
         categoryBox.setPrefWidth(110);
 
-        TextArea out = new TextArea();
-        out.setEditable(false);
+        TableView<Map<String, Object>> table = new TableView<>();
+        table.setEditable(false);
+
+        TableColumn<Map<String, Object>, String> logIdCol = new TableColumn<>("日志ID");
+        logIdCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().get("log_id"))));
+        logIdCol.setSortable(false);
+        logIdCol.setPrefWidth(60);
+
+        TableColumn<Map<String, Object>, String> userIdCol = new TableColumn<>("用户ID");
+        userIdCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().get("user_id"))));
+        userIdCol.setSortable(false);
+        userIdCol.setPrefWidth(60);
+
+        TableColumn<Map<String, Object>, String> usernameCol = new TableColumn<>("用户名");
+        usernameCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().get("username"))));
+        usernameCol.setSortable(false);
+        usernameCol.setPrefWidth(80);
+
+        TableColumn<Map<String, Object>, String> opTypeCol = new TableColumn<>("操作类型");
+        opTypeCol.setCellValueFactory(c -> {
+            Object val = c.getValue().get("operation_type");
+            String s = val != null ? val.toString() : "";
+            switch (s) {
+                case "LOGIN": return new SimpleStringProperty("登录");
+                case "ADD": return new SimpleStringProperty("新增");
+                case "DELETE": return new SimpleStringProperty("删除");
+                case "UPDATE": return new SimpleStringProperty("修改");
+                default: return new SimpleStringProperty(s);
+            }
+        });
+        opTypeCol.setSortable(false);
+        opTypeCol.setPrefWidth(70);
+
+        TableColumn<Map<String, Object>, String> descCol = new TableColumn<>("操作描述");
+        descCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().get("operation_desc"))));
+        descCol.setSortable(false);
+        descCol.setPrefWidth(300);
+
+        TableColumn<Map<String, Object>, String> timeCol = new TableColumn<>("创建时间");
+        timeCol.setCellValueFactory(c -> {
+            Object val = c.getValue().get("create_time");
+            return new SimpleStringProperty(val != null ? val.toString() : "");
+        });
+        timeCol.setSortable(false);
+        timeCol.setPrefWidth(140);
+
+        table.getColumns().addAll(logIdCol, userIdCol, usernameCol, opTypeCol, descCol, timeCol);
 
         final int pageSize = 20;
         final int[] pageNo = {1};
-        Label pageInfo = new Label("\u7b2c1\u9875"); // 第1页
+        table.setFixedCellSize(28);
+        double tableHeight = table.getFixedCellSize() * pageSize + 34;
+        table.setPrefHeight(tableHeight);
+        table.setMinHeight(tableHeight);
+        table.setMaxHeight(tableHeight);
+
+        Label pageInfo = new Label("第1页");
 
         Runnable reload = () -> {
             try {
                 List<Map<String, Object>> rows = operationLogService.queryLogs(keyword.getText(), logCategoryCode(categoryBox.getValue()), pageNo[0], pageSize);
-                out.clear();
-                if (rows.isEmpty()) {
-                    out.appendText("\u6682\u65e0\u64cd\u4f5c\u65e5\u5fd7\u8bb0\u5f55\n\n"); // 暂无操作日志记录
+                if (rows.isEmpty() && pageNo[0] > 1) {
+                    pageNo[0]--;
+                    rows = operationLogService.queryLogs(keyword.getText(), logCategoryCode(categoryBox.getValue()), pageNo[0], pageSize);
                 }
-                for (Map<String, Object> row : rows) {
-                    out.appendText(formatRowMap(row) + "\n\n");
-                }
-                pageInfo.setText("\u7b2c" + pageNo[0] + "\u9875\uff08\u6bcf\u9875" + pageSize + "\u6761\uff0c\u5f53\u524d" + rows.size() + "\u6761\uff09"); // 第x页（每页x条，当前x条）
+                table.setItems(FXCollections.observableArrayList(rows));
+                pageInfo.setText("第" + pageNo[0] + "页（每页" + pageSize + "条，当前" + rows.size() + "条）");
             } catch (Exception ex) {
-                out.appendText(formatError(ex) + "\n");
+                // show error in a label or just log to console
             }
         };
 
-        Button query = new Button("\u67e5\u8be2"); // 查询
+        Button query = new Button("查询");
         query.setOnAction(e -> {
             pageNo[0] = 1;
             reload.run();
         });
-        Button prev = new Button("\u4e0a\u4e00\u9875"); // 上一页
+        Button prev = new Button("上一页");
         prev.setOnAction(e -> {
-            if (pageNo[0] <= 1) {
-                out.appendText("\u63d0\u793a\uff1a\u5df2\u662f\u7b2c\u4e00\u9875\n"); // 提示：已是第一页
-                return;
-            }
+            if (pageNo[0] <= 1) return;
             pageNo[0]--;
             reload.run();
         });
-        Button next = new Button("\u4e0b\u4e00\u9875"); // 下一页
+        Button next = new Button("下一页");
         next.setOnAction(e -> {
+            if (table.getItems() == null || table.getItems().size() < pageSize) return;
             pageNo[0]++;
             reload.run();
         });
-        Button clearLogs = new Button("\u6e05\u7a7a\u65e5\u5fd7"); // 清空日志
+        Button clearLogs = new Button("清空日志");
         clearLogs.setOnAction(e -> {
             Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
-            confirm.setTitle("\u6e05\u7a7a\u65e5\u5fd7"); // 清空日志
-            confirm.setHeaderText("\u786e\u8ba4\u6e05\u7a7a\u65e5\u5fd7\u5417\uff1f"); // 确认清空日志吗？
-            confirm.setContentText("\u5f53\u524d\u5c06\u6309\u5206\u7c7b\u3010" + categoryBox.getValue() + "\u3011\u6e05\u7a7a\uff0c\u64cd\u4f5c\u4e0d\u53ef\u6062\u590d\u3002"); // 当前将按分类【】清空，操作不可恢复。
+            confirm.setTitle("清空日志");
+            confirm.setHeaderText("确认清空日志吗？");
+            confirm.setContentText("当前将按分类【" + categoryBox.getValue() + "】清空，操作不可恢复。");
             Optional<ButtonType> result = confirm.showAndWait();
             if (result.isEmpty() || result.get() != ButtonType.OK) {
                 return;
             }
             try {
                 int cnt = operationLogService.clearLogs(logCategoryCode(categoryBox.getValue()));
-                out.appendText("\u6e05\u7a7a\u6210\u529f\uff0c\u5df2\u5220\u9664" + cnt + "\u6761\u65e5\u5fd7\n"); // 清空成功，已删除 | 条日志
                 pageNo[0] = 1;
                 reload.run();
             } catch (Exception ex) {
-                out.appendText(formatError(ex) + "\n");
+                // silently ignore
             }
         });
 
-        Label hint = new Label("\u8bf4\u660e\uff1a\u53ef\u6309\u5173\u952e\u5b57\u548c\u5206\u7c7b\uff08\u5168\u90e8/\u65b0\u589e/\u5220\u9664/\u4fee\u6539/\u767b\u5f55\uff09\u7b5b\u9009\u65e5\u5fd7\uff0c\u64cd\u4f5c\u63cf\u8ff0\u4f1a\u6807\u6ce8\u3010\u6a21\u5757\u540d\u79f0\u3011\u3002"); // 说明：可按关键字和分类（全部/新增/删除/修改/登录）筛选日志，操作描述会标注【模块名称】。
+        Label hint = new Label("说明：可按关键字和分类（全部/新增/删除/修改/登录）筛选日志，操作描述会标注【模块名称】。");
         HBox queryRow = new HBox(8, keyword, categoryBox, query, clearLogs);
         HBox.setHgrow(keyword, Priority.ALWAYS);
         HBox pageRow = new HBox(8, prev, next, pageInfo);
 
         VBox body = new VBox(10,
-                sectionBox("\u67e5\u8be2\u533a", queryRow, pageRow, hint), // 查询区
-                sectionBox("\u65e5\u5fd7\u7ed3\u679c", out) // 日志结果
-        );
+                sectionBox("查询区", queryRow, pageRow, hint),
+                sectionBox("日志结果", table));
         body.setPadding(new Insets(10));
         reload.run();
 
-        Tab tab = new Tab("\u64cd\u4f5c\u65e5\u5fd7", body); // 操作日志
+        ScrollPane pageScroll = new ScrollPane(body);
+        pageScroll.setFitToWidth(true);
+        pageScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        pageScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+
+        Tab tab = new Tab("操作日志", pageScroll);
         tab.setClosable(false);
+        tab.setOnSelectionChanged(e -> {
+            if (tab.isSelected()) {
+                pageScroll.setVvalue(0);
+            }
+        });
         return tab;
     }
-
 
     private long requireLong(TextField field, String name) {
         String v = field.getText() == null ? "" : field.getText().trim();
