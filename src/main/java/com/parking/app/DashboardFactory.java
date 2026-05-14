@@ -118,101 +118,210 @@ public class DashboardFactory {
     }
 
     private Parent ownerView(User user) {
-        TextArea out = new TextArea();
-        out.setEditable(false);
+        // Tab 1: My Spaces
+        TableView<ParkingSpace> spacesTable = new TableView<>();
+        spacesTable.setEditable(true);
 
-        TextField spaceId = new TextField();
-        spaceId.setPromptText("\u8f66\u4f4dID"); // 车位ID
-        TextField start = new TextField("08:00");
-        TextField end = new TextField("22:00");
+        TableColumn<ParkingSpace, String> sIdCol = new TableColumn<>("车位ID");
+        sIdCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getSpaceId())));
+        sIdCol.setEditable(false); sIdCol.setSortable(false); sIdCol.setPrefWidth(60);
 
-        Button mySpaces = new Button("\u6211\u7684\u8f66\u4f4d"); // 我的车位
-        mySpaces.setOnAction(e -> {
-            try {
-                List<ParkingSpace> rows = parkingSpaceService.queryMySpaces(user.getUserId(), 1, 30);
-                out.appendText("\u6211\u7684\u8f66\u4f4d\uff1a\n\n"); // 我的车位：\\n\\n
-                for (ParkingSpace s : rows) {
-                    out.appendText(
-                            "\u8f66\u4f4dID=" + s.getSpaceId() // 车位ID=
-                                    + "\uff0c\u8f66\u4f4d\u7f16\u53f7=" + s.getSpaceNumber() // ，车位编号=
-                                    + "\uff0c\u6240\u5c5e\u505c\u8f66\u573aID=" + s.getLotId() // ，所属停车场ID=
-                                    + "\uff0c\u6240\u6709\u8005ID=" + s.getOwnerId() // ，所有者ID=
-                                    + "\uff0c\u7c7b\u578b=" + spaceTypeLabel(s.getType()) // ，类型=
-                                    + "\uff0c\u72b6\u6001=" + spaceStatusLabel(s.getStatus()) // ，状态=
-                                    + "\uff0c\u5171\u4eab\u65f6\u95f4=" + s.getShareStartTime() + "~" + s.getShareEndTime() // ，共享时间=
-                                    + "\n\n"
-                    );
-                }
-            } catch (Exception ex) {
-                out.appendText(formatError(ex) + "\n");
-            }
+        TableColumn<ParkingSpace, String> sNumCol = new TableColumn<>("车位编号");
+        sNumCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getSpaceNumber()));
+        sNumCol.setCellFactory(TextFieldTableCell.forTableColumn());
+        sNumCol.setOnEditCommit(e -> {
+            try { parkingSpaceService.updateSpaceField(e.getRowValue().getSpaceId(), "space_number", e.getNewValue()); }
+            catch (Exception ex) { /* ignore */ }
         });
+        sNumCol.setSortable(false); sNumCol.setPrefWidth(100);
 
-        Button setShare = new Button("\u8bbe\u7f6e\u5171\u4eab\u65f6\u6bb5"); // 设置共享时段
-        setShare.setOnAction(e -> {
-            try {
-                parkingSpaceService.updateMyShareWindow(
-                        requireLong(spaceId, "\u8f66\u4f4dID"), // 车位ID
-                        user.getUserId(),
-                        requireTime(start, "\u5f00\u59cb\u65f6\u95f4"), // 开始时间
-                        requireTime(end, "\u7ed3\u675f\u65f6\u95f4") // 结束时间
-                );
-                out.appendText("\u5171\u4eab\u65f6\u6bb5\u66f4\u65b0\u6210\u529f\n"); // 共享时段更新成功\\n
-
-            } catch (Exception ex) {
-                out.appendText(formatError(ex) + "\n");
-            }
+        TableColumn<ParkingSpace, String> sLotCol = new TableColumn<>("停车场ID");
+        sLotCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getLotId())));
+        sLotCol.setCellFactory(TextFieldTableCell.forTableColumn());
+        sLotCol.setOnEditCommit(e -> {
+            try { parkingSpaceService.updateSpaceField(e.getRowValue().getSpaceId(), "lot_id", e.getNewValue()); }
+            catch (Exception ex) { /* ignore */ }
         });
+        sLotCol.setSortable(false); sLotCol.setPrefWidth(80);
 
-        Button ownerReservations = new Button("\u540d\u4e0b\u9884\u7ea6"); // 名下预约
-        ownerReservations.setOnAction(e -> {
-            try {
-                List<Reservation> rows = reservationService.getOwnerReservations(user.getUserId(), 1, 30);
-
-                out.appendText("\n\u3010\u540d\u4e0b\u9884\u7ea6\u3011\n"); // \n【名下预约】\n
-                if (rows.isEmpty()) {
-                    out.appendText("\u6682\u65e0\u9884\u7ea6\u8bb0\u5f55\n\n"); // 暂无预约记录\n\n
-                    return;
-                }
-                for (Reservation r : rows) {
-                    out.appendText(
-                            "\u9884\u7ea6ID=" + r.getReservationId() // 预约ID=
-                                    + "\uff0c\u8f66\u4f4dID=" + r.getSpaceId() // ，车位ID=
-                                    + "\uff0c\u8f66\u4e3bID=" + r.getUserId() // ，车主ID=
-                                    + "\uff0c\u9884\u7ea6\u5f00\u59cb=" + fmtDateTime(r.getReserveStart()) // ，预约开始=
-                                    + "\uff0c\u9884\u7ea6\u7ed3\u675f=" + fmtDateTime(r.getReserveEnd()) // ，预约结束=
-                                    + "\uff0c\u72b6\u6001=" + r.getStatus() // ，状态=
-                                    + "\uff0c\u521b\u5efa\u65f6\u95f4=" + fmtDateTime(r.getCreateTime()) // ，创建时间=
-                                    + "\n\n"
-                    );
-                }
-            } catch (Exception ex) {
-                out.appendText(formatError(ex) + "\n");
-            }
+        TableColumn<ParkingSpace, String> sTypeCol = new TableColumn<>("类型");
+        sTypeCol.setCellValueFactory(c -> new SimpleStringProperty(spaceTypeLabel(c.getValue().getType())));
+        sTypeCol.setCellFactory(ComboBoxTableCell.forTableColumn(FXCollections.observableArrayList("地上", "地下")));
+        sTypeCol.setOnEditCommit(e -> {
+            try { parkingSpaceService.updateSpaceField(e.getRowValue().getSpaceId(), "type", spaceTypeCode(e.getNewValue())); }
+            catch (Exception ex) { /* ignore */ }
         });
+        sTypeCol.setSortable(false); sTypeCol.setPrefWidth(70);
 
-        Button income = new Button("\u6536\u76ca\u660e\u7ec6"); // 收益明细
-        income.setOnAction(e -> {
+        TableColumn<ParkingSpace, String> sStatusCol = new TableColumn<>("状态");
+        sStatusCol.setCellValueFactory(c -> new SimpleStringProperty(spaceStatusLabel(c.getValue().getStatus())));
+        sStatusCol.setCellFactory(ComboBoxTableCell.forTableColumn(FXCollections.observableArrayList("空闲", "已预约", "占用")));
+        sStatusCol.setOnEditCommit(e -> {
+            try { parkingSpaceService.updateSpaceField(e.getRowValue().getSpaceId(), "status", spaceStatusCode(e.getNewValue())); }
+            catch (Exception ex) { /* ignore */ }
+        });
+        sStatusCol.setSortable(false); sStatusCol.setPrefWidth(70);
+
+        java.util.List<String> timeOpts = java.util.List.of("00:00","06:00","07:00","08:00","09:00","10:00","12:00","14:00","16:00","18:00","20:00","22:00","23:59");
+
+        TableColumn<ParkingSpace, String> sStartCol = new TableColumn<>("共享开始");
+        sStartCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getShareStartTime() != null ? c.getValue().getShareStartTime().toString() : ""));
+        sStartCol.setCellFactory(ComboBoxTableCell.forTableColumn(FXCollections.observableArrayList(timeOpts)));
+        sStartCol.setOnEditCommit(e -> {
+            try { parkingSpaceService.updateSpaceField(e.getRowValue().getSpaceId(), "share_start_time", e.getNewValue()); }
+            catch (Exception ex) { /* ignore */ }
+        });
+        sStartCol.setSortable(false); sStartCol.setPrefWidth(90);
+
+        TableColumn<ParkingSpace, String> sEndCol = new TableColumn<>("共享结束");
+        sEndCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getShareEndTime() != null ? c.getValue().getShareEndTime().toString() : ""));
+        sEndCol.setCellFactory(ComboBoxTableCell.forTableColumn(FXCollections.observableArrayList(timeOpts)));
+        sEndCol.setOnEditCommit(e -> {
+            try { parkingSpaceService.updateSpaceField(e.getRowValue().getSpaceId(), "share_end_time", e.getNewValue()); }
+            catch (Exception ex) { /* ignore */ }
+        });
+        sEndCol.setSortable(false); sEndCol.setPrefWidth(90);
+
+        spacesTable.getColumns().addAll(sIdCol, sNumCol, sLotCol, sTypeCol, sStatusCol, sStartCol, sEndCol);
+        spacesTable.setFixedCellSize(28);
+        double sh = spacesTable.getFixedCellSize() * 10 + 34;
+        spacesTable.setPrefHeight(sh); spacesTable.setMinHeight(sh); spacesTable.setMaxHeight(sh);
+
+        Button loadSpaces = new Button("刷新我的车位");
+        loadSpaces.setOnAction(e -> {
             try {
-                List<Map<String, Object>> rows = revenueService.getOwnerIncomeDetail(user.getUserId(), 1, 30);
-                out.appendText("\n\u3010\u6536\u76ca\u660e\u7ec6\u3011\n"); // \\n【收益明细】\\n
-                for (Map<String, Object> row : rows) {
-                    out.appendText(formatRowMap(row) + "\n\n");
+                List<ParkingSpace> rows = parkingSpaceService.queryMySpaces(user.getUserId(), 1, 100);
+                spacesTable.setItems(FXCollections.observableArrayList(rows));
+            } catch (Exception ex) { /* ignore */ }
+        });
+        VBox spacesTab = new VBox(10, loadSpaces, spacesTable);
+        spacesTab.setPadding(new Insets(10));
+
+        // Tab 2: My Reservations
+        TableView<Reservation> resvTable = new TableView<>();
+        resvTable.setEditable(true);
+
+        TableColumn<Reservation, String> rIdCol = new TableColumn<>("预约ID");
+        rIdCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getReservationId())));
+        rIdCol.setEditable(false); rIdCol.setSortable(false); rIdCol.setPrefWidth(60);
+
+        TableColumn<Reservation, String> rSpaceCol = new TableColumn<>("车位ID");
+        rSpaceCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getSpaceId())));
+        rSpaceCol.setEditable(false); rSpaceCol.setSortable(false); rSpaceCol.setPrefWidth(60);
+
+        TableColumn<Reservation, String> rUserCol = new TableColumn<>("车主ID");
+        rUserCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getUserId())));
+        rUserCol.setEditable(false); rUserCol.setSortable(false); rUserCol.setPrefWidth(60);
+
+        TableColumn<Reservation, String> rStartCol = new TableColumn<>("预约开始");
+        rStartCol.setCellValueFactory(c -> new SimpleStringProperty(fmtDateTime(c.getValue().getReserveStart())));
+        rStartCol.setEditable(false); rStartCol.setSortable(false); rStartCol.setPrefWidth(130);
+
+        TableColumn<Reservation, String> rEndCol = new TableColumn<>("预约结束");
+        rEndCol.setCellValueFactory(c -> new SimpleStringProperty(fmtDateTime(c.getValue().getReserveEnd())));
+        rEndCol.setEditable(false); rEndCol.setSortable(false); rEndCol.setPrefWidth(130);
+
+        TableColumn<Reservation, String> rStatusCol = new TableColumn<>("状态");
+        rStatusCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getStatus()));
+        rStatusCol.setCellFactory(ComboBoxTableCell.forTableColumn(FXCollections.observableArrayList("PENDING", "CANCELED")));
+        rStatusCol.setOnEditCommit(e -> {
+            try {
+                if ("CANCELED".equalsIgnoreCase(e.getNewValue())) {
+                    reservationService.cancel(e.getRowValue().getReservationId(), user.getUserId());
                 }
+            } catch (Exception ex) { /* ignore */ }
+        });
+        rStatusCol.setSortable(false); rStatusCol.setPrefWidth(80);
+
+        TableColumn<Reservation, String> rCreateCol = new TableColumn<>("创建时间");
+        rCreateCol.setCellValueFactory(c -> new SimpleStringProperty(fmtDateTime(c.getValue().getCreateTime())));
+        rCreateCol.setEditable(false); rCreateCol.setSortable(false); rCreateCol.setPrefWidth(130);
+
+        resvTable.getColumns().addAll(rIdCol, rSpaceCol, rUserCol, rStartCol, rEndCol, rStatusCol, rCreateCol);
+        resvTable.setFixedCellSize(28);
+        double rh = resvTable.getFixedCellSize() * 10 + 34;
+        resvTable.setPrefHeight(rh); resvTable.setMinHeight(rh); resvTable.setMaxHeight(rh);
+
+        Button loadResv = new Button("刷新名下预约");
+        loadResv.setOnAction(e -> {
+            try {
+                List<Reservation> rows = reservationService.getOwnerReservations(user.getUserId(), 1, 100);
+                resvTable.setItems(FXCollections.observableArrayList(rows));
+            } catch (Exception ex) { /* ignore */ }
+        });
+        VBox resvTab = new VBox(10, loadResv, resvTable);
+        resvTab.setPadding(new Insets(10));
+
+        // Tab 3: Revenue Detail
+        TableView<Map<String, Object>> revenueTable = new TableView<>();
+        revenueTable.setEditable(false);
+
+        TableColumn<Map<String, Object>, String> revIdCol = new TableColumn<>("收益ID");
+        revIdCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().get("revenue_id"))));
+        revIdCol.setSortable(false); revIdCol.setPrefWidth(60);
+
+        TableColumn<Map<String, Object>, String> revSpaceCol = new TableColumn<>("车位ID");
+        revSpaceCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().get("space_id"))));
+        revSpaceCol.setSortable(false); revSpaceCol.setPrefWidth(60);
+
+        TableColumn<Map<String, Object>, String> revPayCol = new TableColumn<>("支付ID");
+        revPayCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().get("payment_id"))));
+        revPayCol.setSortable(false); revPayCol.setPrefWidth(60);
+
+        TableColumn<Map<String, Object>, String> revAmtCol = new TableColumn<>("收益金额");
+        revAmtCol.setCellValueFactory(c -> {
+            Object v = c.getValue().get("income_amount");
+            return new SimpleStringProperty(v != null ? v.toString() : "");
+        });
+        revAmtCol.setSortable(false); revAmtCol.setPrefWidth(80);
+
+        TableColumn<Map<String, Object>, String> revStatusCol = new TableColumn<>("结算状态");
+        revStatusCol.setCellValueFactory(c -> {
+            Object v = c.getValue().get("settle_status");
+            String s = v != null ? v.toString() : "";
+            return new SimpleStringProperty("SETTLED".equals(s) ? "已结算" : "未结算");
+        });
+        revStatusCol.setSortable(false); revStatusCol.setPrefWidth(70);
+
+        TableColumn<Map<String, Object>, String> revTimeCol = new TableColumn<>("结算时间");
+        revTimeCol.setCellValueFactory(c -> {
+            Object v = c.getValue().get("settle_time");
+            return new SimpleStringProperty(v != null ? v.toString() : "");
+        });
+        revTimeCol.setSortable(false); revTimeCol.setPrefWidth(130);
+
+        TableColumn<Map<String, Object>, String> revPayTimeCol = new TableColumn<>("支付时间");
+        revPayTimeCol.setCellValueFactory(c -> {
+            Object v = c.getValue().get("payment_time");
+            return new SimpleStringProperty(v != null ? v.toString() : "");
+        });
+        revPayTimeCol.setSortable(false); revPayTimeCol.setPrefWidth(130);
+
+        revenueTable.getColumns().addAll(revIdCol, revSpaceCol, revPayCol, revAmtCol, revStatusCol, revTimeCol, revPayTimeCol);
+        revenueTable.setFixedCellSize(28);
+        double revh = revenueTable.getFixedCellSize() * 10 + 34;
+        revenueTable.setPrefHeight(revh); revenueTable.setMinHeight(revh); revenueTable.setMaxHeight(revh);
+
+        Label totalIncomeLabel = new Label("总收益: --");
+        Button loadRevenue = new Button("刷新收益明细");
+        loadRevenue.setOnAction(e -> {
+            try {
+                List<Map<String, Object>> rows = revenueService.getOwnerIncomeDetail(user.getUserId(), 1, 100);
+                revenueTable.setItems(FXCollections.observableArrayList(rows));
                 BigDecimal total = revenueService.getOwnerIncomeTotal(user.getUserId());
-                out.appendText("\u603b\u6536\u76ca=" + formatAmount(total) + "\n\n"); // 总收益=
-            } catch (Exception ex) {
-                out.appendText(formatError(ex) + "\n");
-            }
+                totalIncomeLabel.setText("总收益=" + formatAmount(total));
+            } catch (Exception ex) { /* ignore */ }
         });
+        VBox revenueTab = new VBox(10, loadRevenue, revenueTable, totalIncomeLabel);
+        revenueTab.setPadding(new Insets(10));
 
-        VBox box = new VBox(10,
-                new Label("\u8f66\u4f4d\u6240\u6709\u8005\u5de5\u4f5c\u53f0"), // 车位所有者工作台
-                new HBox(8, mySpaces, ownerReservations, income),
-                new HBox(8, spaceId, new Label("\u5f00\u59cb"), start, new Label("\u7ed3\u675f"), end, setShare), // 开始 | 结束
-                out);
-        box.setPadding(new Insets(10));
-        return box;
+        TabPane tabs = new TabPane();
+        Tab t1 = new Tab("我的车位", spacesTab); t1.setClosable(false);
+        Tab t2 = new Tab("名下预约", resvTab); t2.setClosable(false);
+        Tab t3 = new Tab("收益明细", revenueTab); t3.setClosable(false);
+        tabs.getTabs().addAll(t1, t2, t3);
+
+        return tabs;
     }
 
     private Parent carOwnerView(User user) {
