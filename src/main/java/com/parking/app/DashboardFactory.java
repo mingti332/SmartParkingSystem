@@ -11,10 +11,16 @@ import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.ComboBoxTableCell;
 import javafx.scene.control.cell.TextFieldTableCell;
+import javafx.scene.chart.BarChart;
+import javafx.scene.chart.CategoryAxis;
+import javafx.scene.chart.NumberAxis;
+import javafx.scene.chart.StackedBarChart;
+import javafx.scene.chart.XYChart;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
 import java.math.BigDecimal;
@@ -1662,38 +1668,187 @@ public class DashboardFactory {
     }
 
     private Tab reportTab() {
-        TextArea out = new TextArea();
-        Button income = new Button("\u6536\u5165\u6392\u884c"); // 收入排行
-        income.setOnAction(e -> loadReport(out, "income"));
-        Button reserve = new Button("\u9884\u7ea6\u6392\u884c"); // 预约排行
-        reserve.setOnAction(e -> loadReport(out, "reserve"));
-        ComboBox<String> usageMode = new ComboBox<>(FXCollections.observableArrayList(
-                "\u5168\u90e8\u5165\u573a\u6b21\u6570", // 全部入场次数
-                "\u5165\u573a\u6b21\u6570\u524d\u4e09", // 入场次数前三
-                "\u5165\u573a\u6b21\u6570\u5012\u6570\u524d\u4e09" // 入场次数倒数前三
-        ));
-        usageMode.setValue("\u5168\u90e8\u5165\u573a\u6b21\u6570"); // 全部入场次数
-        usageMode.setPrefWidth(220);
-        Button usage = new Button("\u5165\u573a\u7edf\u8ba1"); // 入场统计
-        usage.setPrefWidth(110);
-        usage.setOnAction(e -> loadUsageReport(out, usageMode.getValue()));
+        StackPane incomeChartPane = new StackPane(new Label("请点击[收入排行]查看图表"));
+        StackPane reserveChartPane = new StackPane(new Label("请点击[预约排行]查看图表"));
+        StackPane usageChartPane = new StackPane(new Label("请选择模式后点击[入场统计]查看图表"));
 
-        Label hint = new Label("\u8bf4\u660e\uff1a\u5165\u573a\u7edf\u8ba1\u53ef\u9009\u62e9\u5168\u90e8/\u524d\u4e09/\u5012\u6570\u524d\u4e09\u3002"); // 说明：入场统计可选择全部/前三/倒数前三。
+        incomeChartPane.setPrefHeight(350);
+        incomeChartPane.setStyle("-fx-background-color: #f8fafc; -fx-border-color: #e2e8f0;");
+        reserveChartPane.setPrefHeight(350);
+        reserveChartPane.setStyle("-fx-background-color: #f8fafc; -fx-border-color: #e2e8f0;");
+        usageChartPane.setPrefHeight(350);
+        usageChartPane.setStyle("-fx-background-color: #f8fafc; -fx-border-color: #e2e8f0;");
+
+        Button income = new Button("收入排行");
+        income.setOnAction(e -> {
+            try {
+                List<Map<String, Object>> rows = reportService.incomeByLot();
+                incomeChartPane.getChildren().setAll(createIncomeChart(rows));
+            } catch (Exception ex) {
+                incomeChartPane.getChildren().setAll(new Label(formatError(ex)));
+            }
+        });
+
+        Button reserve = new Button("预约排行");
+        reserve.setOnAction(e -> {
+            try {
+                List<Map<String, Object>> rows = reportService.reservationCountBySpace();
+                reserveChartPane.getChildren().setAll(createReservationChart(rows));
+            } catch (Exception ex) {
+                reserveChartPane.getChildren().setAll(new Label(formatError(ex)));
+            }
+        });
+
+        ComboBox<String> usageMode = new ComboBox<>(FXCollections.observableArrayList(
+                "全部入场次数",
+                "入场次数前三",
+                "入场次数倒数前三"
+        ));
+        usageMode.setValue("全部入场次数");
+        usageMode.setPrefWidth(220);
+
+        Button usage = new Button("入场统计");
+        usage.setPrefWidth(110);
+        usage.setOnAction(e -> {
+            try {
+                String mode = usageMode.getValue() == null ? "全部入场次数" : usageMode.getValue().trim();
+                List<Map<String, Object>> rows = new ArrayList<>(reportService.usageByHour());
+                if ("入场次数前三".equals(mode)) {
+                    rows.sort(Comparator
+                            .comparingInt((Map<String, Object> r) -> safeToInt(r.get("usage_count"))).reversed()
+                            .thenComparingInt(r -> safeToInt(r.get("hour_slot"))));
+                    if (rows.size() > 3) rows = new ArrayList<>(rows.subList(0, 3));
+                } else if ("入场次数倒数前三".equals(mode)) {
+                    rows.sort(Comparator
+                            .comparingInt((Map<String, Object> r) -> safeToInt(r.get("usage_count")))
+                            .thenComparingInt(r -> safeToInt(r.get("hour_slot"))));
+                    if (rows.size() > 3) rows = new ArrayList<>(rows.subList(0, 3));
+                } else {
+                    rows.sort(Comparator.comparingInt(r -> safeToInt(r.get("hour_slot"))));
+                }
+                usageChartPane.getChildren().setAll(createUsageChart(rows, mode));
+            } catch (Exception ex) {
+                usageChartPane.getChildren().setAll(new Label(formatError(ex)));
+            }
+        });
+
+        Label hint = new Label("说明：入场统计可选择全部/前三/倒数前三。");
         hint.setStyle("-fx-text-fill: #475569;");
 
         HBox rankRow = new HBox(10, income, reserve);
-        HBox usageRow = new HBox(10, new Label("\u5165\u573a\u7edf\u8ba1\u6a21\u5f0f"), usageMode, usage); // 入场统计模式
+        HBox usageRow = new HBox(10, new Label("入场统计模式"), usageMode, usage);
         HBox.setHgrow(usageMode, Priority.ALWAYS);
         usageMode.setMaxWidth(Double.MAX_VALUE);
 
-        VBox body = new VBox(10,
-                sectionBox("\u6392\u884c\u7edf\u8ba1", rankRow), // 排行统计
-                sectionBox("\u5165\u573a\u7edf\u8ba1", usageRow, hint), // 入场统计
-                sectionBox("\u7edf\u8ba1\u7ed3\u679c", out)); // 统计结果
+        VBox body = new VBox(14,
+                sectionBox("排行统计", rankRow, incomeChartPane, reserveChartPane),
+                sectionBox("入场统计", usageRow, hint, usageChartPane));
         body.setPadding(new Insets(10));
-        Tab tab = new Tab("\u7edf\u8ba1\u62a5\u8868", body); // 统计报表
+
+        ScrollPane pageScroll = new ScrollPane(body);
+        pageScroll.setFitToWidth(true);
+        pageScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        pageScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+
+        Tab tab = new Tab("统计报表", pageScroll);
         tab.setClosable(false);
         return tab;
+    }
+
+    private BarChart<String, Number> createIncomeChart(List<Map<String, Object>> rows) {
+        CategoryAxis xAxis = new CategoryAxis();
+        xAxis.setLabel("停车场");
+        NumberAxis yAxis = new NumberAxis();
+        yAxis.setLabel("总收入(元)");
+
+        BarChart<String, Number> chart = new BarChart<>(xAxis, yAxis);
+        chart.setTitle("停车场收入排行");
+        chart.setLegendVisible(false);
+        chart.setAnimated(false);
+
+        XYChart.Series<String, Number> series = new XYChart.Series<>();
+        for (Map<String, Object> row : rows) {
+            String lotName = String.valueOf(row.get("lot_name"));
+            double income = ((Number) row.get("total_income")).doubleValue();
+            series.getData().add(new XYChart.Data<>(lotName, income));
+        }
+        chart.getData().add(series);
+        return chart;
+    }
+
+    private StackedBarChart<String, Number> createReservationChart(List<Map<String, Object>> rows) {
+        CategoryAxis xAxis = new CategoryAxis();
+        xAxis.setLabel("停车场");
+        NumberAxis yAxis = new NumberAxis();
+        yAxis.setLabel("预约次数");
+
+        StackedBarChart<String, Number> chart = new StackedBarChart<>(xAxis, yAxis);
+        chart.setTitle("停车场预约次数排行（地上/地下）");
+        chart.setAnimated(false);
+
+        java.util.Set<String> allLots = new java.util.LinkedHashSet<>();
+        java.util.Map<String, Long> groundMap = new java.util.HashMap<>();
+        java.util.Map<String, Long> underMap = new java.util.HashMap<>();
+
+        for (Map<String, Object> row : rows) {
+            String lotName = String.valueOf(row.get("lot_name"));
+            String type = String.valueOf(row.get("type"));
+            long count = ((Number) row.get("reserve_count")).longValue();
+            allLots.add(lotName);
+            if ("UNDERGROUND".equalsIgnoreCase(type)) {
+                underMap.merge(lotName, count, Long::sum);
+            } else {
+                groundMap.merge(lotName, count, Long::sum);
+            }
+        }
+
+        XYChart.Series<String, Number> groundSeries = new XYChart.Series<>();
+        groundSeries.setName("地上");
+        XYChart.Series<String, Number> underSeries = new XYChart.Series<>();
+        underSeries.setName("地下");
+
+        for (String lot : allLots) {
+            groundSeries.getData().add(new XYChart.Data<>(lot, groundMap.getOrDefault(lot, 0L)));
+            underSeries.getData().add(new XYChart.Data<>(lot, underMap.getOrDefault(lot, 0L)));
+        }
+
+        chart.getData().addAll(groundSeries, underSeries);
+
+        // Apply colors: green for ground, orange for underground
+        for (XYChart.Data<String, Number> d : groundSeries.getData()) {
+            d.nodeProperty().addListener((obs, old, n) -> {
+                if (n != null) n.setStyle("-fx-bar-fill: #4CAF50;");
+            });
+        }
+        for (XYChart.Data<String, Number> d : underSeries.getData()) {
+            d.nodeProperty().addListener((obs, old, n) -> {
+                if (n != null) n.setStyle("-fx-bar-fill: #FF9800;");
+            });
+        }
+
+        return chart;
+    }
+
+    private BarChart<String, Number> createUsageChart(List<Map<String, Object>> rows, String mode) {
+        CategoryAxis xAxis = new CategoryAxis();
+        xAxis.setLabel("时段");
+        NumberAxis yAxis = new NumberAxis();
+        yAxis.setLabel("入场次数");
+
+        BarChart<String, Number> chart = new BarChart<>(xAxis, yAxis);
+        chart.setTitle("入场统计 (" + mode + ")");
+        chart.setLegendVisible(false);
+        chart.setAnimated(false);
+
+        XYChart.Series<String, Number> series = new XYChart.Series<>();
+        for (Map<String, Object> row : rows) {
+            int hour = safeToInt(row.get("hour_slot"));
+            String label = String.format("%02d:00-%02d:59", hour, hour);
+            double count = ((Number) row.get("usage_count")).doubleValue();
+            series.getData().add(new XYChart.Data<>(label, count));
+        }
+        chart.getData().add(series);
+        return chart;
     }
 
     private Tab operationLogTab() {
@@ -1945,52 +2100,6 @@ public class DashboardFactory {
         if (lower.contains("for input string")) return "\u8f93\u5165\u7684\u6570\u5b57\u683c\u5f0f\u4e0d\u6b63\u786e"; // 输入的数字格式不正确
 
         return m;
-    }
-
-    private void loadReport(TextArea out, String type) {
-        try {
-            List<Map<String, Object>> rows;
-            if ("income".equals(type)) rows = reportService.incomeByLot();
-            else rows = reportService.reservationCountBySpace();
-            out.clear();
-            for (Map<String, Object> row : rows) out.appendText(formatRowMap(row) + "\n\n");
-        } catch (SQLException ex) {
-            out.appendText(formatError(ex) + "\n");
-        }
-    }
-
-    private void loadUsageReport(TextArea out, String usageMode) {
-        try {
-            String mode = usageMode == null ? "\u5168\u90e8\u5165\u573a\u6b21\u6570" : usageMode.trim(); // 全部入场次数
-            List<Map<String, Object>> rows = new ArrayList<>(reportService.usageByHour());
-            if ("\u5165\u573a\u6b21\u6570\u524d\u4e09".equals(mode)) { // 入场次数前三
-                rows.sort(
-                        Comparator
-                                .comparingInt((Map<String, Object> r) -> safeToInt(r.get("usage_count"))).reversed()
-                                .thenComparingInt(r -> safeToInt(r.get("hour_slot")))
-                );
-                if (rows.size() > 3) rows = new ArrayList<>(rows.subList(0, 3));
-            } else if ("\u5165\u573a\u6b21\u6570\u5012\u6570\u524d\u4e09".equals(mode)) { // 入场次数倒数前三
-                rows.sort(
-                        Comparator
-                                .comparingInt((Map<String, Object> r) -> safeToInt(r.get("usage_count")))
-                                .thenComparingInt(r -> safeToInt(r.get("hour_slot")))
-                );
-                if (rows.size() > 3) rows = new ArrayList<>(rows.subList(0, 3));
-            } else {
-                rows.sort(Comparator.comparingInt(r -> safeToInt(r.get("hour_slot"))));
-            }
-
-            out.clear();
-            out.appendText("\u7edf\u8ba1\u6a21\u5f0f\uff1a" + mode + "\n\n"); // 统计模式：
-            if (rows.isEmpty()) {
-                out.appendText("\u6682\u65e0\u5165\u573a\u8bb0\u5f55\n\n"); // 暂无入场记录\\n
-                return;
-            }
-            for (Map<String, Object> row : rows) out.appendText(formatRowMap(row) + "\n\n");
-        } catch (SQLException ex) {
-            out.appendText(formatError(ex) + "\n");
-        }
     }
 
     private int safeToInt(Object value) {
