@@ -352,17 +352,22 @@ public class DashboardFactory {
             cb.setEditable(true);
             cb.setPrefWidth(240);
             cb.getEditor().textProperty().addListener((obs, oldVal, newVal) -> {
-                if (newVal == null || newVal.isEmpty()) {
-                    cb.setItems(FXCollections.observableArrayList(items));
-                } else {
-                    String filter = newVal.toLowerCase();
-                    java.util.List<String> filtered = new java.util.ArrayList<>();
-                    for (String item : items) {
-                        if (item.toLowerCase().contains(filter)) filtered.add(item);
+                String text = (newVal == null) ? "" : newVal;
+                javafx.application.Platform.runLater(() -> {
+                    if (text.isEmpty()) {
+                        cb.setItems(FXCollections.observableArrayList(items));
+                    } else {
+                        String filter = text.toLowerCase();
+                        java.util.List<String> filtered = new java.util.ArrayList<>();
+                        for (String item : items) {
+                            if (item.toLowerCase().contains(filter)) filtered.add(item);
+                        }
+                        cb.setItems(FXCollections.observableArrayList(filtered));
+                        if (!filtered.isEmpty() && !filtered.contains(cb.getEditor().getText())) {
+                            cb.getEditor().setText(text);
+                        }
                     }
-                    cb.setItems(FXCollections.observableArrayList(filtered));
-                }
-                cb.show();
+                });
             });
             return cb;
         };
