@@ -1668,25 +1668,31 @@ public class DashboardFactory {
     }
 
     private Tab reportTab() {
-        ScrollPane incomeChartPane = new ScrollPane(new Label("请点击[收入排行]查看图表"));
+        Label incomePlaceholder = new Label("请点击[收入排行]查看图表");
+        incomePlaceholder.setWrapText(true);
+        ScrollPane incomeChartPane = new ScrollPane(incomePlaceholder);
         incomeChartPane.setFitToHeight(true);
-        incomeChartPane.setFitToWidth(false);
+        incomeChartPane.setFitToWidth(true);
         incomeChartPane.setPrefHeight(380);
         incomeChartPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         incomeChartPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         incomeChartPane.setStyle("-fx-background-color: #f8fafc; -fx-border-color: #e2e8f0;");
 
-        ScrollPane reserveChartPane = new ScrollPane(new Label("请点击[预约排行]查看图表"));
+        Label reservePlaceholder = new Label("请点击[预约排行]查看图表");
+        reservePlaceholder.setWrapText(true);
+        ScrollPane reserveChartPane = new ScrollPane(reservePlaceholder);
         reserveChartPane.setFitToHeight(true);
-        reserveChartPane.setFitToWidth(false);
+        reserveChartPane.setFitToWidth(true);
         reserveChartPane.setPrefHeight(380);
         reserveChartPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         reserveChartPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         reserveChartPane.setStyle("-fx-background-color: #f8fafc; -fx-border-color: #e2e8f0;");
 
-        ScrollPane usageChartPane = new ScrollPane(new Label("请选择模式后点击[入场统计]查看图表"));
+        Label usagePlaceholder = new Label("请选择模式后点击[入场统计]查看图表");
+        usagePlaceholder.setWrapText(true);
+        ScrollPane usageChartPane = new ScrollPane(usagePlaceholder);
         usageChartPane.setFitToHeight(true);
-        usageChartPane.setFitToWidth(false);
+        usageChartPane.setFitToWidth(true);
         usageChartPane.setPrefHeight(380);
         usageChartPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         usageChartPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
