@@ -9,6 +9,8 @@ import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.*;
+import javafx.scene.control.cell.ComboBoxTableCell;
+import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
@@ -22,11 +24,15 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 
@@ -52,6 +58,17 @@ public class DashboardFactory {
     private final ReportService reportService = new ReportServiceImpl();
     private final OperationLogService operationLogService = new OperationLogServiceImpl();
     private User currentUser;
+
+    private static class RollbackEntry {
+        final String label;
+        final String moduleName;
+        final Runnable restore;
+        RollbackEntry(String label, String moduleName, Runnable restore) {
+            this.label = label; this.moduleName = moduleName; this.restore = restore;
+        }
+    }
+    private final Deque<RollbackEntry> rollbackStack = new ArrayDeque<>();
+    private static final int MAX_ROLLBACK = 3;
 
     public Parent createMainView(User user, Runnable onLogout) {
         this.currentUser = user;
@@ -432,6 +449,8 @@ public class DashboardFactory {
         return tab;
     }
     private Tab userTab() {
+        final TextArea out = new TextArea();
+        final Runnable[] reloadRef = new Runnable[1];
         TableView<User> table = new TableView<>();
         TableColumn<User, String> id = new TableColumn<>("ID");
         id.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getUserId())));
@@ -454,6 +473,13 @@ public class DashboardFactory {
         table.getColumns().add(realName);
         table.getColumns().add(phone);
         table.getColumns().add(createTime);
+        id.setSortable(false);
+        username.setSortable(false);
+        role.setSortable(false);
+        status.setSortable(false);
+        realName.setSortable(false);
+        phone.setSortable(false);
+        createTime.setSortable(false);
 
         final int pageSize = 8;
         final int[] pageNo = {1};
@@ -496,8 +522,6 @@ public class DashboardFactory {
         ComboBox<String> addRole = new ComboBox<>(FXCollections.observableArrayList("\u8f66\u4e3b", "\u8f66\u4f4d\u6240\u6709\u8005")); // 车主 | 车位所有者
         addRole.setValue("\u8f66\u4e3b"); // 车主
         Label pageInfo = new Label("\u7b2c1\u9875"); // 第1页
-        TextArea out = new TextArea();
-
         Runnable reload = () -> {
             try {
                 Integer st = statusFilterValue(statusBox.getValue());
@@ -513,6 +537,28 @@ public class DashboardFactory {
                 out.appendText(formatError(ex) + "\n");
             }
         };
+        reloadRef[0] = reload;
+
+        TableColumn<User, Void> userActionCol = createActionColumn("操作", user -> {
+            if (user.getUserId() == PROTECTED_ADMIN_ID) {
+                showAlert("管理员账号不可删除"); return;
+            }
+            User snapshot = user;
+            pushRollback("用户ID=" + user.getUserId(), "用户管理", () -> {
+                try {
+                    snapshot.setPassword("123456");
+                    long newId = userAdminService.createUser(snapshot);
+                    out.appendText("用户已恢复，新ID=" + newId + "，临时密码=123456，请尽快修改\n");
+                } catch (Exception ex) { showAlert("回滚失败：" + ex.getMessage()); }
+            });
+            try {
+                userAdminService.deleteUser(user.getUserId());
+                out.appendText("删除成功\n");
+                addOperationLog(LOG_DELETE, formatModuleLog("用户管理", "删除用户ID=" + user.getUserId()));
+                reload.run();
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        table.getColumns().add(userActionCol);
 
         Button query = new Button("\u67e5\u8be2"); // 查询
         query.setOnAction(e -> {
@@ -637,7 +683,8 @@ public class DashboardFactory {
                 new Label("\u65b0\u5bc6\u7801"), newPwd); // 新密码
         manageRow.setPrefWrapLength(1200);
 
-        FlowPane actionRow = new FlowPane(8, 8, disable, enable, reset, deleteUser);
+        Button rollbackBtn = createRollbackButton(out, reload);
+        FlowPane actionRow = new FlowPane(8, 8, disable, enable, reset, deleteUser, rollbackBtn);
         actionRow.setPrefWrapLength(1200);
 
         VBox body = new VBox(10,
@@ -664,135 +711,235 @@ public class DashboardFactory {
 
     private Tab parkingLotTab() {
         TextArea out = new TextArea();
+        out.setEditable(false);
+
+        TableView<ParkingLot> table = new TableView<>();
+        table.setEditable(true);
+
+        TableColumn<ParkingLot, String> idCol = new TableColumn<>("ID");
+        idCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getLotId())));
+        idCol.setEditable(false);
+        idCol.setSortable(false);
+        idCol.setPrefWidth(50);
+
+        TableColumn<ParkingLot, String> nameCol = new TableColumn<>("名称");
+        nameCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getLotName()));
+        nameCol.setCellFactory(TextFieldTableCell.forTableColumn());
+        nameCol.setOnEditCommit(e -> {
+            try {
+                parkingLotService.updateLotField(e.getRowValue().getLotId(), "lot_name", e.getNewValue());
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("停车场管理", "修改名称 停车场ID=" + e.getRowValue().getLotId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        nameCol.setSortable(false);
+        nameCol.setPrefWidth(140);
+
+        TableColumn<ParkingLot, String> addrCol = new TableColumn<>("地址");
+        addrCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getAddress()));
+        addrCol.setCellFactory(TextFieldTableCell.forTableColumn());
+        addrCol.setOnEditCommit(e -> {
+            try {
+                parkingLotService.updateLotField(e.getRowValue().getLotId(), "address", e.getNewValue());
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("停车场管理", "修改地址 停车场ID=" + e.getRowValue().getLotId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        addrCol.setSortable(false);
+        addrCol.setPrefWidth(200);
+
+        TableColumn<ParkingLot, String> totalCol = new TableColumn<>("总车位数");
+        totalCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getTotalSpaces() != null ? String.valueOf(c.getValue().getTotalSpaces()) : ""));
+        totalCol.setCellFactory(TextFieldTableCell.forTableColumn());
+        totalCol.setOnEditCommit(e -> {
+            try {
+                parkingLotService.updateLotField(e.getRowValue().getLotId(), "total_spaces", e.getNewValue());
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("停车场管理", "修改总车位数 停车场ID=" + e.getRowValue().getLotId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        totalCol.setSortable(false);
+        totalCol.setPrefWidth(90);
+
+        java.util.List<String> timeOpts = java.util.List.of("00:00", "06:00", "07:00", "08:00", "09:00", "10:00", "12:00", "14:00", "16:00", "18:00", "20:00", "22:00", "23:59");
+
+        TableColumn<ParkingLot, String> openCol = new TableColumn<>("开放时间");
+        openCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getOpenTime() != null ? c.getValue().getOpenTime().toString() : ""));
+        openCol.setCellFactory(ComboBoxTableCell.forTableColumn(FXCollections.observableArrayList(timeOpts)));
+        openCol.setOnEditCommit(e -> {
+            try {
+                parkingLotService.updateLotField(e.getRowValue().getLotId(), "open_time", e.getNewValue());
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("停车场管理", "修改开放时间 停车场ID=" + e.getRowValue().getLotId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        openCol.setSortable(false);
+        openCol.setPrefWidth(90);
+
+        TableColumn<ParkingLot, String> closeCol = new TableColumn<>("关闭时间");
+        closeCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getCloseTime() != null ? c.getValue().getCloseTime().toString() : ""));
+        closeCol.setCellFactory(ComboBoxTableCell.forTableColumn(FXCollections.observableArrayList(timeOpts)));
+        closeCol.setOnEditCommit(e -> {
+            try {
+                parkingLotService.updateLotField(e.getRowValue().getLotId(), "close_time", e.getNewValue());
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("停车场管理", "修改关闭时间 停车场ID=" + e.getRowValue().getLotId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        closeCol.setSortable(false);
+        closeCol.setPrefWidth(90);
+
+        TableColumn<ParkingLot, String> descCol = new TableColumn<>("备注");
+        descCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getDescription() != null ? c.getValue().getDescription() : ""));
+        descCol.setCellFactory(TextFieldTableCell.forTableColumn());
+        descCol.setOnEditCommit(e -> {
+            try {
+                parkingLotService.updateLotField(e.getRowValue().getLotId(), "description", e.getNewValue());
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("停车场管理", "修改备注 停车场ID=" + e.getRowValue().getLotId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        descCol.setSortable(false);
+        descCol.setPrefWidth(150);
+
+        table.getColumns().addAll(idCol, nameCol, addrCol, totalCol, openCol, closeCol, descCol);
+
+        final int pageSize = 8;
+        final int[] pageNo = {1};
+        table.setFixedCellSize(32);
+        double tableHeight = table.getFixedCellSize() * pageSize + 34;
+        table.setPrefHeight(tableHeight);
+        table.setMinHeight(tableHeight);
+        table.setMaxHeight(tableHeight);
+
         TextField keyword = new TextField();
+        keyword.setPromptText("输入ID或名称/地址关键字（留空=全部）");
+        keyword.setPrefWidth(420);
+
+        Label pageInfo = new Label("第1页");
+        Runnable reload = () -> {
+            try {
+                List<ParkingLot> rows = parkingLotService.queryLots(keyword.getText(), pageNo[0], pageSize);
+                if (rows.isEmpty() && pageNo[0] > 1) {
+                    pageNo[0]--;
+                    rows = parkingLotService.queryLots(keyword.getText(), pageNo[0], pageSize);
+                }
+                table.setItems(FXCollections.observableArrayList(rows));
+                pageInfo.setText("第" + pageNo[0] + "页（每页" + pageSize + "条，当前" + rows.size() + "条）");
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        };
+
+        TableColumn<ParkingLot, Void> actionCol = createActionColumn("操作", lot -> {
+            ParkingLot snapshot = new ParkingLot();
+            snapshot.setLotName(lot.getLotName());
+            snapshot.setAddress(lot.getAddress());
+            snapshot.setTotalSpaces(lot.getTotalSpaces());
+            snapshot.setOpenTime(lot.getOpenTime());
+            snapshot.setCloseTime(lot.getCloseTime());
+            snapshot.setDescription(lot.getDescription());
+            pushRollback("停车场ID=" + lot.getLotId(), "停车场管理", () -> {
+                try {
+                    long newId = parkingLotService.addLot(snapshot);
+                    out.appendText("停车场已恢复，新ID=" + newId + "\n");
+                } catch (Exception ex) { showAlert("回滚失败：" + ex.getMessage()); }
+            });
+            try {
+                parkingLotService.removeLot(lot.getLotId());
+                out.appendText("删除成功\n");
+                addOperationLog(LOG_DELETE, formatModuleLog("停车场管理", "删除停车场ID=" + lot.getLotId()));
+                reload.run();
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        table.getColumns().add(actionCol);
+
+        Button query = new Button("查询");
+        query.setOnAction(e -> { pageNo[0] = 1; reload.run(); });
+        Button prevPage = new Button("上一页");
+        prevPage.setOnAction(e -> {
+            if (pageNo[0] <= 1) { out.appendText("提示：已是第一页\n"); return; }
+            pageNo[0]--;
+            reload.run();
+        });
+        Button nextPage = new Button("下一页");
+        nextPage.setOnAction(e -> {
+            if (table.getItems() == null || table.getItems().size() < pageSize) {
+                out.appendText("提示：已是最后一页\n"); return;
+            }
+            pageNo[0]++;
+            reload.run();
+        });
+
         TextField addName = new TextField();
         TextField addAddress = new TextField();
         TextField addTotal = new TextField();
-        TextField addOpen = new TextField("08:00");
-        TextField addClose = new TextField("22:00");
+        ComboBox<String> addOpen = new ComboBox<>(FXCollections.observableArrayList(timeOpts));
+        addOpen.setValue("08:00");
+        ComboBox<String> addClose = new ComboBox<>(FXCollections.observableArrayList(timeOpts));
+        addClose.setValue("22:00");
         TextField addDesc = new TextField();
-        TextField editId = new TextField();
-        TextField editName = new TextField();
-        TextField editAddress = new TextField();
-        TextField editTotal = new TextField();
-        TextField editOpen = new TextField();
-        TextField editClose = new TextField();
-        TextField editDesc = new TextField();
 
-        keyword.setPromptText("\u8f93\u5165ID\u6216\u540d\u79f0/\u5730\u5740\u5173\u952e\u5b57\uff08\u7559\u7a7a=\u5168\u90e8\uff09"); // 输入ID或名称/地址关键字（留空=全部） | 查询说明：1.输入停车场ID可按ID查询；2.输入名称或地址任一部分可模糊查询；3.关键字留空后点击“查询”查询全部停车场。
-        keyword.setPrefWidth(420);
-        addName.setPromptText("\u505c\u8f66\u573a\u540d\u79f0\uff08\u5fc5\u586b\uff09"); // 停车场名称（必填）
-        addAddress.setPromptText("\u5730\u5740\uff08\u5fc5\u586b\uff09"); // 地址（必填）
-        addTotal.setPromptText("\u603b\u8f66\u4f4d\u6570\uff08\u4f8b\u5982\uff1a200\uff09"); // 总车位数（例如：200）
-        addOpen.setPromptText("\u5f00\u653e\u65f6\u95f4\uff08\u4f8b\u5982\uff1a08:00\uff09"); // 开放时间（例如：08:00）
-        addClose.setPromptText("\u5173\u95ed\u65f6\u95f4\uff08\u4f8b\u5982\uff1a22:00\uff09"); // 关闭时间（例如：22:00）
-        addDesc.setPromptText("\u5907\u6ce8\uff08\u53ef\u9009\uff09"); // 备注（可选）
-        editId.setPromptText("\u505c\u8f66\u573aID\uff08\u5fc5\u586b\uff09"); // 停车场ID（必填）
-        editName.setPromptText("\u505c\u8f66\u573a\u540d\u79f0\uff08\u7559\u7a7a\u5219\u4e0d\u4fee\u6539\uff09"); // 停车场名称（留空则不修改）
-        editAddress.setPromptText("\u5730\u5740\uff08\u7559\u7a7a\u5219\u4e0d\u4fee\u6539\uff09"); // 地址（留空则不修改）
-        editTotal.setPromptText("\u603b\u8f66\u4f4d\u6570\uff08\u4f8b\u5982\uff1a200\uff0c\u7559\u7a7a\u5219\u4e0d\u4fee\u6539\uff09"); // 总车位数（例如：200，留空则不修改）
-        editOpen.setPromptText("\u5f00\u653e\u65f6\u95f4\uff08\u4f8b\u5982\uff1a08:00\uff0c\u7559\u7a7a\u5219\u4e0d\u4fee\u6539\uff09"); // 开放时间（例如：08:00，留空则不修改）
-        editClose.setPromptText("\u5173\u95ed\u65f6\u95f4\uff08\u4f8b\u5982\uff1a22:00\uff0c\u7559\u7a7a\u5219\u4e0d\u4fee\u6539\uff09"); // 关闭时间（例如：22:00，留空则不修改）
-        editDesc.setPromptText("\u5907\u6ce8\uff08\u7559\u7a7a\u5219\u4e0d\u4fee\u6539\uff09"); // 备注（留空则不修改）
+        addName.setPromptText("停车场名称（必填）");
+        addAddress.setPromptText("地址（必填）");
+        addTotal.setPromptText("总车位数（例如：200）");
+        addDesc.setPromptText("备注（可选）");
 
-        addName.setPrefWidth(180);
-        addAddress.setPrefWidth(220);
-        addTotal.setPrefWidth(170);
-        addOpen.setPrefWidth(190);
-        addClose.setPrefWidth(190);
-        addDesc.setPrefWidth(200);
-        editId.setPrefWidth(150);
-        editName.setPrefWidth(180);
-        editAddress.setPrefWidth(220);
-        editTotal.setPrefWidth(200);
-        editOpen.setPrefWidth(240);
-        editClose.setPrefWidth(240);
-        editDesc.setPrefWidth(200);
+        addName.setPrefWidth(160);
+        addAddress.setPrefWidth(200);
+        addTotal.setPrefWidth(150);
+        addOpen.setPrefWidth(110);
+        addClose.setPrefWidth(110);
+        addDesc.setPrefWidth(180);
 
-        Button query = new Button("\u67e5\u8be2"); // 查询
-        query.setTooltip(new Tooltip("\u8f93\u5165ID\u53ef\u7cbe\u786e\u67e5\u8be2\uff1b\u8f93\u5165\u540d\u79f0/\u5730\u5740\u53ef\u6a21\u7cca\u67e5\u8be2\uff1b\u7559\u7a7a\u67e5\u5168\u90e8\u3002")); // 输入ID可精确查询；输入名称/地址可模糊查询；留空查全部。
-        query.setOnAction(e -> {
+        Button addBtn = new Button("新增");
+        addBtn.setOnAction(e -> {
             try {
-                List<ParkingLot> rows = parkingLotService.queryLots(keyword.getText(), 1, 50);
-                out.clear();
-                for (ParkingLot lot : rows) {
-                    out.appendText("\u505c\u8f66\u573aID=" + lot.getLotId() // 停车场ID=
-                            + "\uff0c\u540d\u79f0=" + lot.getLotName() // ，名称=
-                            + "\uff0c\u5730\u5740=" + lot.getAddress() // ，地址=
-                            + "\uff0c\u603b\u8f66\u4f4d\u6570=" + lot.getTotalSpaces() // ，总车位数=
-                            + "\uff0c\u8425\u4e1a\u65f6\u95f4=" + lot.getOpenTime() + "~" + lot.getCloseTime() // ，营业时间=
-                            + "\uff0c\u5907\u6ce8=" + lot.getDescription() // ，备注=
-                            + "\n\n");
-                }
-            } catch (Exception ex) {
-                out.appendText(formatError(ex) + "\n");
-            }
+                ParkingLot lot = new ParkingLot();
+                lot.setLotName(addName.getText().trim());
+                lot.setAddress(addAddress.getText().trim());
+                lot.setTotalSpaces(requireInt(addTotal, "总车位数"));
+                lot.setOpenTime(LocalTime.parse(addOpen.getValue()));
+                lot.setCloseTime(LocalTime.parse(addClose.getValue()));
+                String desc = addDesc.getText() == null ? "" : addDesc.getText().trim();
+                if (!desc.isEmpty()) lot.setDescription(desc);
+                long newId = parkingLotService.addLot(lot);
+                out.appendText("新增成功，停车场ID=" + newId + "\n");
+                addOperationLog(LOG_ADD, formatModuleLog("停车场管理", "新增停车场ID=" + newId));
+                addName.clear(); addAddress.clear(); addTotal.clear(); addDesc.clear();
+                addOpen.setValue("08:00"); addClose.setValue("22:00");
+                pageNo[0] = 1;
+                reload.run();
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
         });
-        Label queryHint = new Label("\u8bf4\u660e\uff1a\u8f93\u5165ID\u53ef\u6309ID\u67e5\u8be2\uff1b\u8f93\u5165\u540d\u79f0/\u5730\u5740\u53ef\u6a21\u7cca\u67e5\u8be2\uff1b\u7559\u7a7a\u67e5\u5168\u90e8\u3002"); // 说明：输入ID可按ID查询；输入名称/地址可模糊查询；留空查全部。
 
-        Button add = new Button("\u65b0\u589e"); // 新增
-        Runnable resetLotAddForm = () -> {
-            addName.clear();
-            addAddress.clear();
-            addTotal.clear();
-            addDesc.clear();
-            addOpen.clear();
-            addClose.clear();
-        };
-        Runnable resetLotEditForm = () -> {
-            editId.clear();
-            editName.clear();
-            editAddress.clear();
-            editTotal.clear();
-            editDesc.clear();
-            editOpen.clear();
-            editClose.clear();
-        };
-        add.setOnAction(e -> {
-            try {
-                long newId = parkingLotService.addLot(lotFrom(editId, addName, addAddress, addTotal, addOpen, addClose, addDesc, false));
-                out.appendText("\u65b0\u589e\u6210\u529f\uff0c\u505c\u8f66\u573aID=" + newId + "\n"); // 新增成功，停车场ID=
-                addOperationLog(LOG_ADD, formatModuleLog("停车场管理", "新增停车场ID=" + newId)); // 停车场管理 | 新增停车场ID=
-                resetLotAddForm.run();
-            } catch (Exception ex) {
-                out.appendText(formatError(ex) + "\n");
-            }
-        });
-        Button update = new Button("\u4fee\u6539"); // 修改
-        update.setOnAction(e -> run(
-                () -> parkingLotService.updateLot(lotFromForPartialUpdate(editId, editName, editAddress, editTotal, editOpen, editClose, editDesc)),
-                out,
-                resetLotEditForm,
-                LOG_UPDATE,
-                "停车场管理",
-                () -> "修改停车场ID=" + (editId.getText() == null ? "" : editId.getText().trim())
-        ));
-        Button delete = new Button("\u5220\u9664"); // 删除
-        delete.setOnAction(e -> run(
-                () -> parkingLotService.removeLot(requireLong(editId, "ID")),
-                out,
-                resetLotEditForm,
-                LOG_DELETE,
-                "停车场管理",
-                () -> "删除停车场ID=" + (editId.getText() == null ? "" : editId.getText().trim())
-        ));
+        Button rollbackBtn = createRollbackButton(out, reload);
 
-        FlowPane addRow = new FlowPane(8, 8, addName, addAddress, addTotal, addOpen, addClose, addDesc, add);
+        HBox queryRow = new HBox(8, keyword, query);
+        HBox.setHgrow(keyword, Priority.ALWAYS);
+        HBox pageRow = new HBox(8, prevPage, nextPage, pageInfo);
+
+        FlowPane addRow = new FlowPane(8, 8,
+                new Label("名称"), addName,
+                new Label("地址"), addAddress,
+                new Label("总车位数"), addTotal,
+                new Label("开放时间"), addOpen,
+                new Label("关闭时间"), addClose,
+                new Label("备注"), addDesc,
+                addBtn);
         addRow.setPrefWrapLength(1200);
-        FlowPane editRow = new FlowPane(8, 8, editId, editName, editAddress, editTotal, editOpen, editClose, editDesc, update, delete);
-        editRow.setPrefWrapLength(1200);
 
         VBox body = new VBox(10,
-                sectionBox("\u67e5\u8be2\u533a", new HBox(8, keyword, query), queryHint), // 查询区 | 查询结果
-                sectionBox("\u65b0\u589e\u533a\uff08ID\u81ea\u52a8\u751f\u6210\uff09", addRow), // 新增区（ID自动生成）
-                sectionBox("\u4fee\u6539/\u5220\u9664\u533a\uff08\u9700\u8f93\u5165\u505c\u8f66\u573aID\uff09", editRow), // 修改/删除区（需输入停车场ID）
+                sectionBox("查询区", queryRow, pageRow),
+                sectionBox("查询结果", table),
+                sectionBox("新增区（ID自动生成）", addRow),
+                rollbackBtn,
                 out);
         body.setPadding(new Insets(10));
         ScrollPane pageScroll = new ScrollPane(body);
         pageScroll.setFitToWidth(true);
         pageScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         pageScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-        Tab tab = new Tab("\u505c\u8f66\u573a\u7ba1\u7406", pageScroll); // 停车场管理
+        reload.run();
+        Tab tab = new Tab("停车场管理", pageScroll);
         tab.setClosable(false);
         tab.setOnSelectionChanged(e -> {
             if (tab.isSelected()) {
@@ -804,204 +951,268 @@ public class DashboardFactory {
 
     private Tab parkingSpaceTab() {
         TextArea out = new TextArea();
-        TextField queryKeyword = new TextField();
-        TextField queryOwnerId = new TextField();
-        ComboBox<String> queryType = new ComboBox<>(FXCollections.observableArrayList("\u5168\u90e8\u7c7b\u578b", "\u5730\u4e0a", "\u5730\u4e0b")); // 全部类型 | 地上 | 地下
-        queryType.setValue("\u5168\u90e8\u7c7b\u578b"); // 全部类型
-        ComboBox<String> queryStatus = new ComboBox<>(FXCollections.observableArrayList("\u5168\u90e8\u72b6\u6001", "\u7a7a\u95f2", "\u5df2\u9884\u7ea6", "\u5360\u7528")); // 全部状态 | 空闲 | 已预约 | 占用
-        queryStatus.setValue("\u5168\u90e8\u72b6\u6001"); // 全部状态
-        TextField queryStart = new TextField("08:00");
-        TextField queryEnd = new TextField("22:00");
+        out.setEditable(false);
+
+        TableView<ParkingSpace> table = new TableView<>();
+        table.setEditable(true);
+
+        TableColumn<ParkingSpace, String> idCol = new TableColumn<>("ID");
+        idCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getSpaceId())));
+        idCol.setEditable(false);
+        idCol.setSortable(false);
+        idCol.setPrefWidth(50);
+
+        TableColumn<ParkingSpace, String> numberCol = new TableColumn<>("车位编号");
+        numberCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getSpaceNumber()));
+        numberCol.setCellFactory(TextFieldTableCell.forTableColumn());
+        numberCol.setOnEditCommit(e -> {
+            try {
+                parkingSpaceService.updateSpaceField(e.getRowValue().getSpaceId(), "space_number", e.getNewValue());
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("车位管理", "修改编号 车位ID=" + e.getRowValue().getSpaceId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        numberCol.setSortable(false);
+        numberCol.setPrefWidth(110);
+
+        TableColumn<ParkingSpace, String> lotIdCol = new TableColumn<>("停车场ID");
+        lotIdCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getLotId() != null ? String.valueOf(c.getValue().getLotId()) : ""));
+        lotIdCol.setCellFactory(TextFieldTableCell.forTableColumn());
+        lotIdCol.setOnEditCommit(e -> {
+            try {
+                parkingSpaceService.updateSpaceField(e.getRowValue().getSpaceId(), "lot_id", e.getNewValue());
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("车位管理", "修改停车场ID 车位ID=" + e.getRowValue().getSpaceId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        lotIdCol.setSortable(false);
+        lotIdCol.setPrefWidth(90);
+
+        TableColumn<ParkingSpace, String> ownerIdCol = new TableColumn<>("所有者ID");
+        ownerIdCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getOwnerId() != null ? String.valueOf(c.getValue().getOwnerId()) : ""));
+        ownerIdCol.setCellFactory(TextFieldTableCell.forTableColumn());
+        ownerIdCol.setOnEditCommit(e -> {
+            try {
+                parkingSpaceService.updateSpaceField(e.getRowValue().getSpaceId(), "owner_id", e.getNewValue());
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("车位管理", "修改所有者ID 车位ID=" + e.getRowValue().getSpaceId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        ownerIdCol.setSortable(false);
+        ownerIdCol.setPrefWidth(90);
+
+        TableColumn<ParkingSpace, String> typeCol = new TableColumn<>("类型");
+        typeCol.setCellValueFactory(c -> new SimpleStringProperty(spaceTypeLabel(c.getValue().getType())));
+        typeCol.setCellFactory(ComboBoxTableCell.forTableColumn(FXCollections.observableArrayList("地上", "地下")));
+        typeCol.setOnEditCommit(e -> {
+            try {
+                parkingSpaceService.updateSpaceField(e.getRowValue().getSpaceId(), "type", spaceTypeCode(e.getNewValue()));
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("车位管理", "修改类型 车位ID=" + e.getRowValue().getSpaceId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        typeCol.setSortable(false);
+        typeCol.setPrefWidth(80);
+
+        TableColumn<ParkingSpace, String> statusCol = new TableColumn<>("状态");
+        statusCol.setCellValueFactory(c -> new SimpleStringProperty(spaceStatusLabel(c.getValue().getStatus())));
+        statusCol.setCellFactory(ComboBoxTableCell.forTableColumn(FXCollections.observableArrayList("空闲", "已预约", "占用")));
+        statusCol.setOnEditCommit(e -> {
+            try {
+                parkingSpaceService.updateSpaceField(e.getRowValue().getSpaceId(), "status", spaceStatusCode(e.getNewValue()));
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("车位管理", "修改状态 车位ID=" + e.getRowValue().getSpaceId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        statusCol.setSortable(false);
+        statusCol.setPrefWidth(80);
+
+        java.util.List<String> timeOpts = java.util.List.of("00:00", "06:00", "07:00", "08:00", "09:00", "10:00", "12:00", "14:00", "16:00", "18:00", "20:00", "22:00", "23:59");
+
+        TableColumn<ParkingSpace, String> startCol = new TableColumn<>("共享开始");
+        startCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getShareStartTime() != null ? c.getValue().getShareStartTime().toString() : ""));
+        startCol.setCellFactory(ComboBoxTableCell.forTableColumn(FXCollections.observableArrayList(timeOpts)));
+        startCol.setOnEditCommit(e -> {
+            try {
+                parkingSpaceService.updateSpaceField(e.getRowValue().getSpaceId(), "share_start_time", e.getNewValue());
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("车位管理", "修改共享开始 车位ID=" + e.getRowValue().getSpaceId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        startCol.setSortable(false);
+        startCol.setPrefWidth(90);
+
+        TableColumn<ParkingSpace, String> endCol = new TableColumn<>("共享结束");
+        endCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getShareEndTime() != null ? c.getValue().getShareEndTime().toString() : ""));
+        endCol.setCellFactory(ComboBoxTableCell.forTableColumn(FXCollections.observableArrayList(timeOpts)));
+        endCol.setOnEditCommit(e -> {
+            try {
+                parkingSpaceService.updateSpaceField(e.getRowValue().getSpaceId(), "share_end_time", e.getNewValue());
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("车位管理", "修改共享结束 车位ID=" + e.getRowValue().getSpaceId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        endCol.setSortable(false);
+        endCol.setPrefWidth(90);
+
+        table.getColumns().addAll(idCol, numberCol, lotIdCol, ownerIdCol, typeCol, statusCol, startCol, endCol);
+
+        final int pageSize = 8;
+        final int[] pageNo = {1};
+        table.setFixedCellSize(32);
+        double tableHeight = table.getFixedCellSize() * pageSize + 34;
+        table.setPrefHeight(tableHeight);
+        table.setMinHeight(tableHeight);
+        table.setMaxHeight(tableHeight);
+
+        TextField keyword = new TextField();
+        keyword.setPromptText("查询关键字（车位编号/ID）");
+        keyword.setPrefWidth(260);
+        ComboBox<String> queryType = new ComboBox<>(FXCollections.observableArrayList("全部类型", "地上", "地下"));
+        queryType.setValue("全部类型");
+        queryType.setPrefWidth(110);
+        ComboBox<String> queryStatus = new ComboBox<>(FXCollections.observableArrayList("全部状态", "空闲", "已预约", "占用"));
+        queryStatus.setValue("全部状态");
+        queryStatus.setPrefWidth(110);
+
+        Label pageInfo = new Label("第1页");
+        Runnable reload = () -> {
+            try {
+                String statusCode = "全部状态".equals(queryStatus.getValue()) ? "" : spaceStatusCode(queryStatus.getValue());
+                List<ParkingSpace> rows = parkingSpaceService.querySpaces(keyword.getText(), statusCode, null, pageNo[0], pageSize);
+                String typeFilter = "全部类型".equals(queryType.getValue()) ? "" : spaceTypeCode(queryType.getValue());
+                if (!typeFilter.isEmpty()) {
+                    rows = rows.stream().filter(s -> typeFilter.equalsIgnoreCase(s.getType())).collect(java.util.stream.Collectors.toList());
+                }
+                if (rows.isEmpty() && pageNo[0] > 1) {
+                    pageNo[0]--;
+                    rows = parkingSpaceService.querySpaces(keyword.getText(), statusCode, null, pageNo[0], pageSize);
+                    if (!typeFilter.isEmpty()) {
+                        String tf = typeFilter;
+                        rows = rows.stream().filter(s -> tf.equalsIgnoreCase(s.getType())).collect(java.util.stream.Collectors.toList());
+                    }
+                }
+                table.setItems(FXCollections.observableArrayList(rows));
+                pageInfo.setText("第" + pageNo[0] + "页（每页" + pageSize + "条，当前" + rows.size() + "条）");
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        };
+
+        TableColumn<ParkingSpace, Void> actionCol = createActionColumn("操作", space -> {
+            ParkingSpace snapshot = new ParkingSpace();
+            snapshot.setLotId(space.getLotId());
+            snapshot.setOwnerId(space.getOwnerId());
+            snapshot.setSpaceNumber(space.getSpaceNumber());
+            snapshot.setType(space.getType());
+            snapshot.setStatus(space.getStatus());
+            snapshot.setShareStartTime(space.getShareStartTime());
+            snapshot.setShareEndTime(space.getShareEndTime());
+            pushRollback("车位ID=" + space.getSpaceId(), "车位管理", () -> {
+                try {
+                    long newId = parkingSpaceService.addSpace(snapshot);
+                    out.appendText("车位已恢复，新ID=" + newId + "\n");
+                } catch (Exception ex) { showAlert("回滚失败：" + ex.getMessage()); }
+            });
+            try {
+                parkingSpaceService.removeSpace(space.getSpaceId());
+                out.appendText("删除成功\n");
+                addOperationLog(LOG_DELETE, formatModuleLog("车位管理", "删除车位ID=" + space.getSpaceId()));
+                reload.run();
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        table.getColumns().add(actionCol);
+
+        Button query = new Button("查询");
+        query.setOnAction(e -> { pageNo[0] = 1; reload.run(); });
+        Button prevPage = new Button("上一页");
+        prevPage.setOnAction(e -> {
+            if (pageNo[0] <= 1) { out.appendText("提示：已是第一页\n"); return; }
+            pageNo[0]--;
+            reload.run();
+        });
+        Button nextPage = new Button("下一页");
+        nextPage.setOnAction(e -> {
+            if (table.getItems() == null || table.getItems().size() < pageSize) {
+                out.appendText("提示：已是最后一页\n"); return;
+            }
+            pageNo[0]++;
+            reload.run();
+        });
 
         TextField addLotId = new TextField();
         TextField addOwnerId = new TextField();
         TextField addNumber = new TextField();
-        ComboBox<String> addType = new ComboBox<>(FXCollections.observableArrayList("\u5730\u4e0a", "\u5730\u4e0b")); // 地上 | 地下
-        addType.setValue("\u5730\u4e0a"); // 地上
-        ComboBox<String> addStatus = new ComboBox<>(FXCollections.observableArrayList("\u7a7a\u95f2", "\u5df2\u9884\u7ea6", "\u5360\u7528")); // 空闲 | 已预约 | 占用
-        addStatus.setValue("\u7a7a\u95f2"); // 空闲
-        TextField addStart = new TextField("08:00");
-        TextField addEnd = new TextField("22:00");
+        ComboBox<String> addType = new ComboBox<>(FXCollections.observableArrayList("地上", "地下"));
+        addType.setValue("地上");
+        ComboBox<String> addStatus = new ComboBox<>(FXCollections.observableArrayList("空闲", "已预约", "占用"));
+        addStatus.setValue("空闲");
+        ComboBox<String> addStart = new ComboBox<>(FXCollections.observableArrayList(timeOpts));
+        addStart.setValue("08:00");
+        ComboBox<String> addEnd = new ComboBox<>(FXCollections.observableArrayList(timeOpts));
+        addEnd.setValue("22:00");
 
-        TextField editId = new TextField();
-        TextField editLotId = new TextField();
-        TextField editOwnerId = new TextField();
-        TextField editNumber = new TextField();
-        ComboBox<String> editType = new ComboBox<>(FXCollections.observableArrayList("\u4e0d\u4fee\u6539", "\u5730\u4e0a", "\u5730\u4e0b")); // 不修改 | 地上 | 地下
-        editType.setValue("\u4e0d\u4fee\u6539"); // 不修改
-        ComboBox<String> editStatus = new ComboBox<>(FXCollections.observableArrayList("\u4e0d\u4fee\u6539", "\u7a7a\u95f2", "\u5df2\u9884\u7ea6", "\u5360\u7528")); // 不修改 | 空闲 | 已预约 | 占用
-        editStatus.setValue("\u4e0d\u4fee\u6539"); // 不修改
-        TextField editStart = new TextField();
-        TextField editEnd = new TextField();
+        addLotId.setPromptText("停车场ID（例如：1）");
+        addOwnerId.setPromptText("所有者ID（例如：2）");
+        addNumber.setPromptText("车位编号");
+        addLotId.setPrefWidth(110);
+        addOwnerId.setPrefWidth(110);
+        addNumber.setPrefWidth(150);
+        addType.setPrefWidth(90);
+        addStatus.setPrefWidth(90);
+        addStart.setPrefWidth(110);
+        addEnd.setPrefWidth(110);
 
-        queryKeyword.setPromptText("\u67e5\u8be2\u5173\u952e\u5b57\uff08\u8f66\u4f4d\u7f16\u53f7\uff09"); // 查询关键字（车位编号）
-        queryOwnerId.setPromptText("\u67e5\u8be2\u62e5\u6709\u8005ID\uff08\u53ef\u9009\uff0c\u53ef\u67e5\u8be2\u8be5\u8f66\u4e3b\u6240\u6709\u8f66\u4f4d\uff09"); // 查询拥有者ID（可选，可查询该车主所有车位）
-        queryStart.setPromptText("\u67e5\u8be2\u5f00\u59cb\u65f6\u95f4\uff08\u4f8b\u5982\uff1a08:00\uff09"); // 查询开始时间（例如：08:00）
-        queryEnd.setPromptText("\u67e5\u8be2\u7ed3\u675f\u65f6\u95f4\uff08\u4f8b\u5982\uff1a22:00\uff09"); // 查询结束时间（例如：22:00）
-        addLotId.setPromptText("\u505c\u8f66\u573aID\uff08\u4f8b\u5982\uff1a1\uff09"); // 停车场ID（例如：1）
-        addOwnerId.setPromptText("\u6240\u6709\u8005ID\uff08\u4f8b\u5982\uff1a2\uff09"); // 所有者ID（例如：2）
-        addNumber.setPromptText("\u8f66\u4f4d\u7f16\u53f7\uff08\u624b\u52a8\u8f93\u5165\uff09"); // 车位编号（手动输入）
-        addStart.setPromptText("\u5171\u4eab\u5f00\u59cb\uff08\u4f8b\u5982\uff1a08:00\uff09"); // 共享开始（例如：08:00）
-        addEnd.setPromptText("\u5171\u4eab\u7ed3\u675f\uff08\u4f8b\u5982\uff1a22:00\uff09"); // 共享结束（例如：22:00）
-        editId.setPromptText("\u8f66\u4f4dID\uff08\u5fc5\u586b\uff0c\u4f8b\u5982\uff1a3\uff09"); // 车位ID（必填，例如：3）
-        editLotId.setPromptText("\u505c\u8f66\u573aID\uff08\u7559\u7a7a\u5219\u4e0d\u4fee\u6539\uff0c\u4f8b\u5982\uff1a1\uff09"); // 停车场ID（留空则不修改，例如：1）
-        editOwnerId.setPromptText("\u6240\u6709\u8005ID\uff08\u7559\u7a7a\u5219\u4e0d\u4fee\u6539\uff0c\u4f8b\u5982\uff1a2\uff09"); // 所有者ID（留空则不修改，例如：2）
-        editNumber.setPromptText("\u8f66\u4f4d\u7f16\u53f7\uff08\u7559\u7a7a\u5219\u4e0d\u4fee\u6539\uff09"); // 车位编号（留空则不修改）
-        editStart.setPromptText("\u5171\u4eab\u5f00\u59cb\uff08\u4f8b\u5982\uff1a08:00\uff0c\u7559\u7a7a\u5219\u4e0d\u4fee\u6539\uff09"); // 共享开始（例如：08:00，留空则不修改）
-        editEnd.setPromptText("\u5171\u4eab\u7ed3\u675f\uff08\u4f8b\u5982\uff1a22:00\uff0c\u7559\u7a7a\u5219\u4e0d\u4fee\u6539\uff09"); // 共享结束（例如：22:00，留空则不修改）
-
-        queryKeyword.setPrefWidth(260);
-        queryOwnerId.setPrefWidth(260);
-        queryType.setPrefWidth(120);
-        queryStatus.setPrefWidth(130);
-        queryStart.setPrefWidth(160);
-        queryEnd.setPrefWidth(160);
-        addLotId.setPrefWidth(120);
-        addOwnerId.setPrefWidth(120);
-        addNumber.setPrefWidth(240);
-        addType.setPrefWidth(110);
-        addStatus.setPrefWidth(110);
-        addStart.setPrefWidth(140);
-        addEnd.setPrefWidth(140);
-        editId.setPrefWidth(100);
-        editLotId.setPrefWidth(120);
-        editOwnerId.setPrefWidth(120);
-        editNumber.setPrefWidth(240);
-        editType.setPrefWidth(110);
-        editStatus.setPrefWidth(110);
-        editStart.setPrefWidth(140);
-        editEnd.setPrefWidth(140);
-
-        Runnable resetAddForm = () -> {
-            addLotId.clear();
-            addOwnerId.clear();
-            addNumber.clear();
-            addType.setValue("\u5730\u4e0a"); // 地上
-            addStatus.setValue("\u7a7a\u95f2"); // 空闲
-            addStart.clear();
-            addEnd.clear();
-        };
-        Runnable resetEditForm = () -> {
-            editId.clear();
-            editLotId.clear();
-            editOwnerId.clear();
-            editNumber.clear();
-            editType.setValue("\u4e0d\u4fee\u6539"); // 不修改
-            editStatus.setValue("\u4e0d\u4fee\u6539"); // 不修改
-            editStart.clear();
-            editEnd.clear();
-        };
-
-        Button query = new Button("\u67e5\u8be2"); // 查询
-        query.setOnAction(e -> {
+        Button addBtn = new Button("新增");
+        addBtn.setOnAction(e -> {
             try {
-                String keyword = queryKeyword.getText();
-                boolean allType = "\u5168\u90e8\u7c7b\u578b".equals(queryType.getValue()); // 全部类型
-                String typeCode = allType ? "" : spaceTypeCode(queryType.getValue());
-                boolean allStatus = "\u5168\u90e8\u72b6\u6001".equals(queryStatus.getValue()); // 全部状态
-                String statusCode = allStatus ? "" : spaceStatusCode(queryStatus.getValue());
-                Long ownerFilter = null;
-                if (queryOwnerId.getText() != null && !queryOwnerId.getText().isBlank()) {
-                    ownerFilter = requireLong(queryOwnerId, "\u62e5\u6709\u8005ID"); // 拥有者ID
-                }
-
-                List<ParkingSpace> rows;
-                if (allStatus) {
-                    rows = parkingSpaceService.querySpaces(keyword, "", null, 1, 500);
-                } else if ("FREE".equalsIgnoreCase(statusCode)) {
-                    LocalTime st = requireTime(queryStart, "\u67e5\u8be2\u5f00\u59cb\u65f6\u95f4"); // 查询开始时间
-                    LocalTime et = requireTime(queryEnd, "\u67e5\u8be2\u7ed3\u675f\u65f6\u95f4"); // 查询结束时间
-                    LocalDateTime startAt = LocalDateTime.now().withHour(st.getHour()).withMinute(st.getMinute()).withSecond(0).withNano(0);
-                    LocalDateTime endAt = LocalDateTime.now().withHour(et.getHour()).withMinute(et.getMinute()).withSecond(0).withNano(0);
-                    if (!startAt.isBefore(endAt)) {
-                        throw new IllegalArgumentException("\u67e5\u8be2\u7ed3\u675f\u65f6\u95f4\u5fc5\u987b\u665a\u4e8e\u5f00\u59cb\u65f6\u95f4"); // 查询结束时间必须晚于开始时间
-                    }
-                    rows = parkingSpaceService.queryAvailableSpaces(startAt, endAt, 1, 500);
-                } else {
-                    rows = parkingSpaceService.querySpaces(keyword, statusCode, null, 1, 500);
-                }
-
-                out.clear();
-                for (ParkingSpace s : rows) {
-                    if (!allType && !typeCode.equalsIgnoreCase(s.getType())) {
-                        continue;
-                    }
-                    if (keyword != null && !keyword.isBlank() && (s.getSpaceNumber() == null || !s.getSpaceNumber().contains(keyword.trim()))) {
-                        continue;
-                    }
-                    if (ownerFilter != null && (s.getOwnerId() == null || !ownerFilter.equals(s.getOwnerId()))) {
-                        continue;
-                    }
-
-                    String displayStatus = ("FREE".equalsIgnoreCase(statusCode) && "RESERVED".equalsIgnoreCase(s.getStatus()))
-                            ? "\u65f6\u6bb5\u5185\u53ef\u7528" // 时段内可用
-                            : spaceStatusLabel(s.getStatus());
-                    out.appendText("\u8f66\u4f4dID=" + s.getSpaceId() // 车位ID=
-                            + "\uff0c\u8f66\u4f4d\u7f16\u53f7=" + s.getSpaceNumber() // ，车位编号=
-                            + "\uff0c\u505c\u8f66\u573aID=" + s.getLotId() // ，停车场ID=
-                            + "\uff0c\u6240\u6709\u8005ID=" + s.getOwnerId() // ，所有者ID=
-                            + "\uff0c\u7c7b\u578b=" + spaceTypeLabel(s.getType()) // ，类型=
-                            + "\uff0c\u72b6\u6001=" + displayStatus // ，状态=
-                            + "\uff0c\u5171\u4eab\u65f6\u95f4=" + s.getShareStartTime() + "~" + s.getShareEndTime() // ，共享时间=
-                            + "\n\n");
-                }
-            } catch (Exception ex) {
-                out.appendText(formatError(ex) + "\n");
-            }
+                ParkingSpace space = new ParkingSpace();
+                space.setLotId(requireLong(addLotId, "停车场ID"));
+                space.setOwnerId(requireLong(addOwnerId, "所有者ID"));
+                space.setSpaceNumber(addNumber.getText().trim());
+                space.setType(spaceTypeCode(addType.getValue()));
+                space.setStatus(spaceStatusCode(addStatus.getValue()));
+                space.setShareStartTime(LocalTime.parse(addStart.getValue()));
+                space.setShareEndTime(LocalTime.parse(addEnd.getValue()));
+                long newId = parkingSpaceService.addSpace(space);
+                out.appendText("新增成功，车位ID=" + newId + "\n");
+                addOperationLog(LOG_ADD, formatModuleLog("车位管理", "新增车位ID=" + newId));
+                addLotId.clear(); addOwnerId.clear(); addNumber.clear();
+                addType.setValue("地上"); addStatus.setValue("空闲");
+                addStart.setValue("08:00"); addEnd.setValue("22:00");
+                pageNo[0] = 1;
+                reload.run();
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
         });
 
-        Button add = new Button("\u65b0\u589e"); // 新增
-        add.setOnAction(e -> {
-            try {
-                long newId = parkingSpaceService.addSpace(spaceFrom(editId, addLotId, addOwnerId, addNumber, addType, addStatus, addStart, addEnd, false));
-                out.appendText("\u65b0\u589e\u6210\u529f\uff0c\u8f66\u4f4dID=" + newId + "\n"); // 新增成功，车位ID=
-                addOperationLog(LOG_ADD, formatModuleLog("车位管理", "新增车位ID=" + newId)); // 车位管理 | 新增车位ID=
-                resetAddForm.run();
-            } catch (Exception ex) {
-                out.appendText(formatError(ex) + "\n");
-            }
-        });
-        Button update = new Button("\u4fee\u6539"); // 修改
-        update.setOnAction(e -> run(
-                () -> parkingSpaceService.updateSpace(spaceFromForPartialUpdate(editId, editLotId, editOwnerId, editNumber, editType, editStatus, editStart, editEnd)),
-                out,
-                resetEditForm,
-                LOG_UPDATE,
-                "车位管理",
-                () -> "修改车位ID=" + (editId.getText() == null ? "" : editId.getText().trim())
-        ));
-        Button delete = new Button("\u5220\u9664"); // 删除
-        delete.setOnAction(e -> run(
-                () -> parkingSpaceService.removeSpace(requireLong(editId, "ID")),
-                out,
-                resetEditForm,
-                LOG_DELETE,
-                "车位管理",
-                () -> "删除车位ID=" + (editId.getText() == null ? "" : editId.getText().trim())
-        ));
+        Button rollbackBtn = createRollbackButton(out, reload);
 
-        FlowPane queryRow = new FlowPane(8, 8, queryKeyword, queryOwnerId, queryType, queryStatus, query);
-        queryRow.setPrefWrapLength(1200);
-        FlowPane queryTimeRow = new FlowPane(8, 8, queryStart, queryEnd);
-        queryTimeRow.setPrefWrapLength(1200);
-        FlowPane addRow = new FlowPane(8, 8, addLotId, addOwnerId, addNumber, addType, addStatus, addStart, addEnd, add);
+        HBox queryRow = new HBox(8, keyword, queryType, queryStatus, query);
+        HBox.setHgrow(keyword, Priority.ALWAYS);
+        HBox pageRow = new HBox(8, prevPage, nextPage, pageInfo);
+
+        FlowPane addRow = new FlowPane(8, 8,
+                new Label("停车场ID"), addLotId,
+                new Label("所有者ID"), addOwnerId,
+                new Label("编号"), addNumber,
+                new Label("类型"), addType,
+                new Label("状态"), addStatus,
+                new Label("共享开始"), addStart,
+                new Label("共享结束"), addEnd,
+                addBtn);
         addRow.setPrefWrapLength(1200);
-        FlowPane editRow = new FlowPane(8, 8, editId, editLotId, editOwnerId, editNumber, editType, editStatus, editStart, editEnd, update, delete);
-        editRow.setPrefWrapLength(1200);
 
         VBox body = new VBox(10,
-                sectionBox("\u67e5\u8be2\u533a", // 查询区
-                        queryRow,
-                        queryTimeRow),
-                sectionBox("\u67e5\u8be2\u7ed3\u679c", out), // 查询结果
-                sectionBox("\u65b0\u589e\u533a\uff08ID\u81ea\u52a8\u751f\u6210\uff09", addRow), // 新增区（ID自动生成）
-                sectionBox("\u4fee\u6539/\u5220\u9664\u533a\uff08\u9700\u8f93\u5165\u8f66\u4f4dID\uff09", editRow)); // 修改/删除区（需输入车位ID）
+                sectionBox("查询区", queryRow, pageRow),
+                sectionBox("查询结果", table),
+                sectionBox("新增区（ID自动生成）", addRow),
+                rollbackBtn,
+                out);
         body.setPadding(new Insets(10));
         ScrollPane pageScroll = new ScrollPane(body);
         pageScroll.setFitToWidth(true);
         pageScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         pageScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-        Tab tab = new Tab("\u8f66\u4f4d\u7ba1\u7406", pageScroll); // 车位管理
+        reload.run();
+        Tab tab = new Tab("车位管理", pageScroll);
         tab.setClosable(false);
         tab.setOnSelectionChanged(e -> {
             if (tab.isSelected()) {
@@ -1012,167 +1223,250 @@ public class DashboardFactory {
     }
 
     private Tab pricingRuleTab() {
-        TextField queryKeyword = new TextField();
+        TextArea out = new TextArea();
+        out.setEditable(false);
+
+        TableView<PricingRule> table = new TableView<>();
+        table.setEditable(true);
+
+        TableColumn<PricingRule, String> idCol = new TableColumn<>("ID");
+        idCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getRuleId())));
+        idCol.setEditable(false);
+        idCol.setSortable(false);
+        idCol.setPrefWidth(50);
+
+        TableColumn<PricingRule, String> nameCol = new TableColumn<>("规则名称");
+        nameCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getRuleName()));
+        nameCol.setCellFactory(TextFieldTableCell.forTableColumn());
+        nameCol.setOnEditCommit(e -> {
+            try {
+                pricingRuleService.updateRuleField(e.getRowValue().getRuleId(), "rule_name", e.getNewValue());
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("计费规则", "修改名称 规则ID=" + e.getRowValue().getRuleId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        nameCol.setSortable(false);
+        nameCol.setPrefWidth(150);
+
+        TableColumn<PricingRule, String> chargeTypeCol = new TableColumn<>("计费方式");
+        chargeTypeCol.setCellValueFactory(c -> new SimpleStringProperty(chargeTypeLabel(c.getValue().getChargeType())));
+        chargeTypeCol.setCellFactory(ComboBoxTableCell.forTableColumn(FXCollections.observableArrayList("按时计费", "按次计费")));
+        chargeTypeCol.setOnEditCommit(e -> {
+            try {
+                pricingRuleService.updateRuleField(e.getRowValue().getRuleId(), "charge_type", chargeTypeCode(e.getNewValue()));
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("计费规则", "修改计费方式 规则ID=" + e.getRowValue().getRuleId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        chargeTypeCol.setSortable(false);
+        chargeTypeCol.setPrefWidth(90);
+
+        TableColumn<PricingRule, String> unitPriceCol = new TableColumn<>("单价");
+        unitPriceCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getUnitPrice() != null ? c.getValue().getUnitPrice().toString() : ""));
+        unitPriceCol.setCellFactory(TextFieldTableCell.forTableColumn());
+        unitPriceCol.setOnEditCommit(e -> {
+            try {
+                pricingRuleService.updateRuleField(e.getRowValue().getRuleId(), "unit_price", e.getNewValue());
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("计费规则", "修改单价 规则ID=" + e.getRowValue().getRuleId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        unitPriceCol.setSortable(false);
+        unitPriceCol.setPrefWidth(80);
+
+        TableColumn<PricingRule, String> unitTimeCol = new TableColumn<>("单位时长(分)");
+        unitTimeCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getUnitTime() != null ? String.valueOf(c.getValue().getUnitTime()) : ""));
+        unitTimeCol.setCellFactory(TextFieldTableCell.forTableColumn());
+        unitTimeCol.setOnEditCommit(e -> {
+            try {
+                pricingRuleService.updateRuleField(e.getRowValue().getRuleId(), "unit_time", e.getNewValue());
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("计费规则", "修改单位时长 规则ID=" + e.getRowValue().getRuleId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        unitTimeCol.setSortable(false);
+        unitTimeCol.setPrefWidth(100);
+
+        TableColumn<PricingRule, String> fixedPriceCol = new TableColumn<>("固定价");
+        fixedPriceCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getFixedPrice() != null ? c.getValue().getFixedPrice().toString() : ""));
+        fixedPriceCol.setCellFactory(TextFieldTableCell.forTableColumn());
+        fixedPriceCol.setOnEditCommit(e -> {
+            try {
+                pricingRuleService.updateRuleField(e.getRowValue().getRuleId(), "fixed_price", e.getNewValue());
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("计费规则", "修改固定价 规则ID=" + e.getRowValue().getRuleId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        fixedPriceCol.setSortable(false);
+        fixedPriceCol.setPrefWidth(80);
+
+        TableColumn<PricingRule, String> spaceTypeCol = new TableColumn<>("适用车位");
+        spaceTypeCol.setCellValueFactory(c -> new SimpleStringProperty(spaceTypeLabel(c.getValue().getApplicableSpaceType())));
+        spaceTypeCol.setCellFactory(ComboBoxTableCell.forTableColumn(FXCollections.observableArrayList("地上", "地下")));
+        spaceTypeCol.setOnEditCommit(e -> {
+            try {
+                pricingRuleService.updateRuleField(e.getRowValue().getRuleId(), "applicable_space_type", spaceTypeCode(e.getNewValue()));
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("计费规则", "修改适用车位 规则ID=" + e.getRowValue().getRuleId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        spaceTypeCol.setSortable(false);
+        spaceTypeCol.setPrefWidth(80);
+
+        TableColumn<PricingRule, String> statusCol = new TableColumn<>("状态");
+        statusCol.setCellValueFactory(c -> new SimpleStringProperty(enabledLabel(c.getValue().getStatus())));
+        statusCol.setCellFactory(ComboBoxTableCell.forTableColumn(FXCollections.observableArrayList("启用", "禁用")));
+        statusCol.setOnEditCommit(e -> {
+            try {
+                pricingRuleService.updateRuleField(e.getRowValue().getRuleId(), "status", String.valueOf(enabledStatusValue(e.getNewValue())));
+                out.appendText("修改成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("计费规则", "修改状态 规则ID=" + e.getRowValue().getRuleId()));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        statusCol.setSortable(false);
+        statusCol.setPrefWidth(70);
+
+        table.getColumns().addAll(idCol, nameCol, chargeTypeCol, unitPriceCol, unitTimeCol, fixedPriceCol, spaceTypeCol, statusCol);
+
+        final int pageSize = 8;
+        final int[] pageNo = {1};
+        table.setFixedCellSize(32);
+        double tableHeight = table.getFixedCellSize() * pageSize + 34;
+        table.setPrefHeight(tableHeight);
+        table.setMinHeight(tableHeight);
+        table.setMaxHeight(tableHeight);
+
+        TextField keyword = new TextField();
+        keyword.setPromptText("规则ID/名称（留空=全部）");
+        keyword.setPrefWidth(260);
+        ComboBox<String> queryStatus = new ComboBox<>(FXCollections.observableArrayList("全部", "启用", "禁用"));
+        queryStatus.setValue("全部");
+        queryStatus.setPrefWidth(100);
+
+        Label pageInfo = new Label("第1页");
+        Runnable reload = () -> {
+            try {
+                Integer st = "全部".equals(queryStatus.getValue()) ? null : enabledStatusValue(queryStatus.getValue());
+                List<PricingRule> rows = pricingRuleService.queryRules(keyword.getText(), "", st, pageNo[0], pageSize);
+                if (rows.isEmpty() && pageNo[0] > 1) {
+                    pageNo[0]--;
+                    rows = pricingRuleService.queryRules(keyword.getText(), "", st, pageNo[0], pageSize);
+                }
+                table.setItems(FXCollections.observableArrayList(rows));
+                pageInfo.setText("第" + pageNo[0] + "页（每页" + pageSize + "条，当前" + rows.size() + "条）");
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        };
+
+        TableColumn<PricingRule, Void> actionCol = createActionColumn("操作", rule -> {
+            PricingRule snapshot = new PricingRule();
+            snapshot.setRuleName(rule.getRuleName());
+            snapshot.setChargeType(rule.getChargeType());
+            snapshot.setUnitPrice(rule.getUnitPrice());
+            snapshot.setUnitTime(rule.getUnitTime());
+            snapshot.setFixedPrice(rule.getFixedPrice());
+            snapshot.setApplicableSpaceType(rule.getApplicableSpaceType());
+            snapshot.setStatus(rule.getStatus());
+            pushRollback("规则ID=" + rule.getRuleId(), "计费规则", () -> {
+                try {
+                    long newId = pricingRuleService.addRule(snapshot);
+                    out.appendText("规则已恢复，新ID=" + newId + "\n");
+                } catch (Exception ex) { showAlert("回滚失败：" + ex.getMessage()); }
+            });
+            try {
+                pricingRuleService.removeRule(rule.getRuleId());
+                out.appendText("删除成功\n");
+                addOperationLog(LOG_DELETE, formatModuleLog("计费规则", "删除规则ID=" + rule.getRuleId()));
+                reload.run();
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        table.getColumns().add(actionCol);
+
+        Button query = new Button("查询");
+        query.setOnAction(e -> { pageNo[0] = 1; reload.run(); });
+        Button prevPage = new Button("上一页");
+        prevPage.setOnAction(e -> {
+            if (pageNo[0] <= 1) { out.appendText("提示：已是第一页\n"); return; }
+            pageNo[0]--;
+            reload.run();
+        });
+        Button nextPage = new Button("下一页");
+        nextPage.setOnAction(e -> {
+            if (table.getItems() == null || table.getItems().size() < pageSize) {
+                out.appendText("提示：已是最后一页\n"); return;
+            }
+            pageNo[0]++;
+            reload.run();
+        });
+
         TextField addName = new TextField();
-        ComboBox<String> addChargeType = new ComboBox<>(FXCollections.observableArrayList("\u6309\u65f6\u8ba1\u8d39", "\u6309\u6b21\u8ba1\u8d39")); // 按时计费 | 按次计费
-        addChargeType.setValue("\u6309\u65f6\u8ba1\u8d39"); // 按时计费
+        ComboBox<String> addChargeType = new ComboBox<>(FXCollections.observableArrayList("按时计费", "按次计费"));
+        addChargeType.setValue("按时计费");
         TextField addUnitPrice = new TextField();
         TextField addUnitTime = new TextField();
         TextField addFixedPrice = new TextField();
-        ComboBox<String> addSpaceType = new ComboBox<>(FXCollections.observableArrayList("\u5730\u4e0a", "\u5730\u4e0b")); // 地上 | 地下
-        addSpaceType.setValue("\u5730\u4e0a"); // 地上
-        ComboBox<String> addStatus = new ComboBox<>(FXCollections.observableArrayList("\u542f\u7528", "\u7981\u7528")); // 启用 | 禁用
-        addStatus.setValue("\u542f\u7528"); // 启用
+        ComboBox<String> addSpaceType = new ComboBox<>(FXCollections.observableArrayList("地上", "地下"));
+        addSpaceType.setValue("地上");
+        ComboBox<String> addStatus = new ComboBox<>(FXCollections.observableArrayList("启用", "禁用"));
+        addStatus.setValue("启用");
 
-        TextField editId = new TextField();
-        TextField editName = new TextField();
-        ComboBox<String> editChargeType = new ComboBox<>(FXCollections.observableArrayList("\u4e0d\u4fee\u6539", "\u6309\u65f6\u8ba1\u8d39", "\u6309\u6b21\u8ba1\u8d39")); // 不修改 | 按时计费 | 按次计费
-        editChargeType.setValue("\u4e0d\u4fee\u6539"); // 不修改
-        TextField editUnitPrice = new TextField();
-        TextField editUnitTime = new TextField();
-        TextField editFixedPrice = new TextField();
-        ComboBox<String> editSpaceType = new ComboBox<>(FXCollections.observableArrayList("\u4e0d\u4fee\u6539", "\u5730\u4e0a", "\u5730\u4e0b")); // 不修改 | 地上 | 地下
-        editSpaceType.setValue("\u4e0d\u4fee\u6539"); // 不修改
-        ComboBox<String> editStatus = new ComboBox<>(FXCollections.observableArrayList("\u4e0d\u4fee\u6539", "\u542f\u7528", "\u7981\u7528")); // 不修改 | 启用 | 禁用
-        editStatus.setValue("\u4e0d\u4fee\u6539"); // 不修改
+        addName.setPromptText("规则名称（例如：地上按时计费）");
+        addUnitPrice.setPromptText("单价(元)");
+        addUnitTime.setPromptText("单位时长(分)");
+        addFixedPrice.setPromptText("固定价格(元)");
 
-        queryKeyword.setPrefWidth(260);
-        addName.setPrefWidth(240);
-        addChargeType.setPrefWidth(130);
-        addUnitPrice.setPrefWidth(160);
-        addUnitTime.setPrefWidth(170);
-        addFixedPrice.setPrefWidth(170);
-        addSpaceType.setPrefWidth(110);
-        addStatus.setPrefWidth(110);
-        editId.setPrefWidth(110);
-        editName.setPrefWidth(240);
-        editChargeType.setPrefWidth(150);
-        editUnitPrice.setPrefWidth(190);
-        editUnitTime.setPrefWidth(200);
-        editFixedPrice.setPrefWidth(200);
-        editSpaceType.setPrefWidth(120);
-        editStatus.setPrefWidth(120);
+        addName.setPrefWidth(180);
+        addChargeType.setPrefWidth(110);
+        addUnitPrice.setPrefWidth(100);
+        addUnitTime.setPrefWidth(110);
+        addFixedPrice.setPrefWidth(110);
+        addSpaceType.setPrefWidth(80);
+        addStatus.setPrefWidth(80);
 
-        queryKeyword.setPromptText("\u89c4\u5219ID/\u540d\u79f0\uff08\u7559\u7a7a=\u5168\u90e8\uff09"); // 规则ID/名称（留空=全部） | 查询说明：1.输入规则ID可按ID查询；2.输入名称关键字可模糊查询；3.留空查询全部规则。
-        addName.setPromptText("\u89c4\u5219\u540d\u79f0\uff08\u4f8b\u5982\uff1a\u5730\u4e0a\u6309\u65f6\u8ba1\u8d39\uff09"); // 规则名称（例如：地上按时计费）
-        addUnitPrice.setPromptText("\u5355\u4ef7(\u5143)"); // 单价(元)
-        addUnitTime.setPromptText("\u5355\u4f4d\u65f6\u957f(\u5206)"); // 单位时长(分)
-        addFixedPrice.setPromptText("\u56fa\u5b9a\u4ef7\u683c(\u5143)"); // 固定价格(元)
-        editId.setPromptText("\u89c4\u5219ID\uff08\u5fc5\u586b\uff09"); // 规则ID（必填）
-        editName.setPromptText("\u89c4\u5219\u540d(\u7559\u7a7a\u5219\u4e0d\u4fee\u6539)"); // 规则名(留空则不修改)
-        editUnitPrice.setPromptText("\u5355\u4ef7(\u5143,\u7559\u7a7a\u5219\u4e0d\u4fee\u6539)"); // 单价(元,留空则不修改)
-        editUnitTime.setPromptText("\u65f6\u957f(\u5206,\u7559\u7a7a\u5219\u4e0d\u4fee\u6539)"); // 时长(分,留空则不修改)
-        editFixedPrice.setPromptText("\u56fa\u5b9a\u4ef7(\u5143,\u7559\u7a7a\u5219\u4e0d\u4fee\u6539)"); // 固定价(元,留空则不修改)
+        Label pricingHelp = new Label("说明：按时计费请填写[单价+单位时长]；按次计费请填写[固定价格]。");
 
-        editName.setTooltip(new Tooltip("\u89c4\u5219\u540d\u79f0\uff0c\u7559\u7a7a\u5219\u4fdd\u6301\u539f\u503c")); // 规则名称，留空则保持原值
-        editChargeType.setTooltip(new Tooltip("\u8ba1\u8d39\u65b9\u5f0f\uff0c\u9009\u201c\u4e0d\u4fee\u6539\u201d\u5219\u4fdd\u6301\u539f\u503c")); // 计费方式，选“不修改”则保持原值
-        editUnitPrice.setTooltip(new Tooltip("\u6309\u65f6\u8ba1\u8d39\u5355\u4ef7\uff0c\u7559\u7a7a\u5219\u4e0d\u4fee\u6539")); // 按时计费单价，留空则不修改
-        editUnitTime.setTooltip(new Tooltip("\u6309\u65f6\u8ba1\u8d39\u65f6\u957f(\u5206\u949f)\uff0c\u7559\u7a7a\u5219\u4e0d\u4fee\u6539")); // 按时计费时长(分钟)，留空则不修改
-        editFixedPrice.setTooltip(new Tooltip("\u6309\u6b21\u8ba1\u8d39\u56fa\u5b9a\u4ef7\uff0c\u7559\u7a7a\u5219\u4e0d\u4fee\u6539")); // 按次计费固定价，留空则不修改
-        editSpaceType.setTooltip(new Tooltip("\u9002\u7528\u8f66\u4f4d\u7c7b\u578b\uff0c\u9009\u201c\u4e0d\u4fee\u6539\u201d\u5219\u4fdd\u6301\u539f\u503c")); // 适用车位类型，选“不修改”则保持原值
-        editStatus.setTooltip(new Tooltip("\u89c4\u5219\u72b6\u6001\uff0c\u9009\u201c\u4e0d\u4fee\u6539\u201d\u5219\u4fdd\u6301\u539f\u503c")); // 规则状态，选“不修改”则保持原值
-        TextArea out = new TextArea();
-        out.setEditable(false);
-        out.setPrefRowCount(10);
-
-        Button query = new Button("\u67e5\u8be2"); // 查询
-        Runnable reload = () -> {
-            try {
-                // 查询支持两种方式：输入数字按规则ID查询；输入文本按规则名称模糊查询；留空则查询全部。
-                List<PricingRule> rows = pricingRuleService.queryRules(queryKeyword.getText(), "", null, 1, 30);
-                out.clear();
-                for (PricingRule r : rows) {
-                    out.appendText("\u89c4\u5219ID=" + r.getRuleId() // 规则ID=
-                            + "\uff0c\u89c4\u5219\u540d\u79f0=" + r.getRuleName() // ，规则名称=
-                            + "\uff0c\u8ba1\u8d39\u65b9\u5f0f=" + chargeTypeLabel(r.getChargeType()) // ，计费方式=
-                            + "\uff0c\u5355\u4ef7=" + r.getUnitPrice() // ，单价=
-                            + "\uff0c\u5355\u4f4d\u65f6\u957f(\u5206\u949f)=" + r.getUnitTime() // ，单位时长(分钟)=
-                            + "\uff0c\u56fa\u5b9a\u4ef7=" + r.getFixedPrice() // ，固定价=
-                            + "\uff0c\u9002\u7528\u8f66\u4f4d=" + spaceTypeLabel(r.getApplicableSpaceType()) // ，适用车位=
-                            + "\uff0c\u72b6\u6001=" + enabledLabel(r.getStatus()) // ，状态=
-                            + "\n\n");
-                }
-            } catch (Exception ex) {
-                out.appendText(formatError(ex) + "\n");
-            }
-        };
-        query.setOnAction(e -> reload.run());
-
-        Button add = new Button("\u65b0\u589e"); // 新增
-        Runnable resetRuleAddForm = () -> {
-            addName.clear();
-            addUnitPrice.clear();
-            addUnitTime.clear();
-            addFixedPrice.clear();
-            addChargeType.setValue("\u6309\u65f6\u8ba1\u8d39"); // 按时计费
-            addSpaceType.setValue("\u5730\u4e0a"); // 地上
-            addStatus.setValue("\u542f\u7528"); // 启用
-        };
-        Runnable resetRuleEditForm = () -> {
-            editId.clear();
-            editName.clear();
-            editUnitPrice.clear();
-            editUnitTime.clear();
-            editFixedPrice.clear();
-            editChargeType.setValue("\u4e0d\u4fee\u6539"); // 不修改
-            editSpaceType.setValue("\u4e0d\u4fee\u6539"); // 不修改
-            editStatus.setValue("\u4e0d\u4fee\u6539"); // 不修改
-        };
-        add.setOnAction(e -> {
+        Button addBtn = new Button("新增");
+        addBtn.setOnAction(e -> {
             try {
                 long newId = pricingRuleService.addRule(ruleFromForCreate(addName, addChargeType, addUnitPrice, addUnitTime, addFixedPrice, addSpaceType, addStatus));
-                out.appendText("\u65b0\u589e\u6210\u529f\uff0c\u89c4\u5219ID=" + newId + "\n"); // 新增成功，规则ID=
-                addOperationLog(LOG_ADD, formatModuleLog("计费规则", "新增计费规则ID=" + newId)); // 计费规则 | 新增计费规则ID=
-                resetRuleAddForm.run();
+                out.appendText("新增成功，规则ID=" + newId + "\n");
+                addOperationLog(LOG_ADD, formatModuleLog("计费规则", "新增规则ID=" + newId));
+                addName.clear(); addUnitPrice.clear(); addUnitTime.clear(); addFixedPrice.clear();
+                addChargeType.setValue("按时计费"); addSpaceType.setValue("地上"); addStatus.setValue("启用");
+                pageNo[0] = 1;
                 reload.run();
-            } catch (Exception ex) {
-                out.appendText(formatError(ex) + "\n");
-            }
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
         });
-        Button update = new Button("\u4fee\u6539"); // 修改
-        update.setOnAction(e -> run(
-                () -> pricingRuleService.updateRule(ruleFromForPartialUpdate(editId, editName, editChargeType, editUnitPrice, editUnitTime, editFixedPrice, editSpaceType, editStatus)),
-                out,
-                () -> {
-                    resetRuleEditForm.run();
-                    reload.run();
-                },
-                LOG_UPDATE,
-                "计费规则",
-                () -> "修改计费规则ID=" + (editId.getText() == null ? "" : editId.getText().trim())
-        ));
-        Button delete = new Button("\u5220\u9664"); // 删除
-        delete.setOnAction(e -> run(
-                () -> pricingRuleService.removeRule(requireLong(editId, "ID")),
-                out,
-                () -> {
-                    resetRuleEditForm.run();
-                    reload.run();
-                },
-                LOG_DELETE,
-                "计费规则",
-                () -> "删除计费规则ID=" + (editId.getText() == null ? "" : editId.getText().trim())
-        ));
 
-        Label pricingHelp = new Label("\u8bf4\u660e\uff1a\u6309\u65f6\u8ba1\u8d39\u8bf7\u586b\u5199\u201c\u5355\u4ef7+\u5355\u4f4d\u65f6\u957f\u201d\uff1b\u6309\u6b21\u8ba1\u8d39\u8bf7\u586b\u5199\u201c\u56fa\u5b9a\u4ef7\u683c\u201d\u3002"); // 说明：按时计费请填写“单价+单位时长”；按次计费请填写“固定价格”。
-        Label pricingQueryHint = new Label("\u67e5\u8be2\u8bf4\u660e\uff1a\u8f93\u5165\u89c4\u5219ID\u53ef\u6309ID\u67e5\u8be2\uff1b\u8f93\u5165\u540d\u79f0\u5173\u952e\u5b57\u53ef\u6a21\u7cca\u67e5\u8be2\uff1b\u7559\u7a7a\u67e5\u8be2\u5168\u90e8\u3002"); // 查询说明：输入规则ID可按ID查询；输入名称关键字可模糊查询；留空查询全部。
-        FlowPane addRow = new FlowPane(8, 8, addName, addChargeType, addUnitPrice, addUnitTime, addFixedPrice, addSpaceType, addStatus, add);
+        Button rollbackBtn = createRollbackButton(out, reload);
+
+        HBox queryRow = new HBox(8, keyword, queryStatus, query);
+        HBox.setHgrow(keyword, Priority.ALWAYS);
+        HBox pageRow = new HBox(8, prevPage, nextPage, pageInfo);
+
+        FlowPane addRow = new FlowPane(8, 8,
+                new Label("名称"), addName,
+                new Label("计费方式"), addChargeType,
+                new Label("单价"), addUnitPrice,
+                new Label("时长(分)"), addUnitTime,
+                new Label("固定价"), addFixedPrice,
+                new Label("适用车位"), addSpaceType,
+                new Label("状态"), addStatus,
+                addBtn);
         addRow.setPrefWrapLength(1200);
-        FlowPane editRow = new FlowPane(8, 8, editId, editName, editChargeType, editUnitPrice, editUnitTime, editFixedPrice, editSpaceType, editStatus, update, delete);
-        editRow.setPrefWrapLength(1200);
 
         VBox body = new VBox(10,
-                sectionBox("\u67e5\u8be2\u533a", new HBox(8, queryKeyword, query), pricingQueryHint), // 查询区 | 查询结果
-                sectionBox("\u67e5\u8be2\u7ed3\u679c", out), // 查询结果
-                sectionBox("\u65b0\u589e\u533a\uff08ID\u81ea\u52a8\u751f\u6210\uff09", addRow, pricingHelp), // 新增区（ID自动生成）
-                sectionBox("\u4fee\u6539/\u5220\u9664\u533a\uff08\u9700\u8f93\u5165\u89c4\u5219ID\uff09", editRow)); // 修改/删除区（需输入规则ID）
+                sectionBox("查询区", queryRow, pageRow),
+                sectionBox("查询结果", table),
+                sectionBox("新增区（ID自动生成）", addRow, pricingHelp),
+                rollbackBtn,
+                out);
         body.setPadding(new Insets(10));
-        reload.run();
         ScrollPane pageScroll = new ScrollPane(body);
         pageScroll.setFitToWidth(true);
         pageScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         pageScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-        Tab tab = new Tab("\u8ba1\u8d39\u89c4\u5219", pageScroll); // 计费规则
+        reload.run();
+        Tab tab = new Tab("计费规则", pageScroll);
         tab.setClosable(false);
         tab.setOnSelectionChanged(e -> {
             if (tab.isSelected()) {
@@ -1181,50 +1475,189 @@ public class DashboardFactory {
         });
         return tab;
     }
+
     private Tab settlementTab() {
-        TextField revenueId = new TextField();
-        revenueId.setPromptText("\u6536\u76ca\u8bb0\u5f55ID\uff08revenue_id\uff09"); // 收益记录ID（revenue_id）
-        ComboBox<String> status = new ComboBox<>(FXCollections.observableArrayList("\u5168\u90e8", "\u672a\u7ed3\u7b97", "\u5df2\u7ed3\u7b97")); // 全部 | 未结算 | 已结算
-        status.setValue("\u5168\u90e8"); // 全部
         TextArea out = new TextArea();
         out.setEditable(false);
 
-        Button query = new Button("\u67e5\u8be2\u7ed3\u7b97\u8bb0\u5f55"); // 查询结算记录
+        TableView<Map<String, Object>> table = new TableView<>();
+        table.setEditable(true);
+
+        final Runnable[] reloadRef = new Runnable[1];
+
+        TableColumn<Map<String, Object>, String> revenueIdCol = new TableColumn<>("收益记录ID");
+        revenueIdCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().get("revenue_id"))));
+        revenueIdCol.setEditable(false);
+        revenueIdCol.setSortable(false);
+        revenueIdCol.setPrefWidth(100);
+
+        TableColumn<Map<String, Object>, String> ownerIdCol = new TableColumn<>("收益人ID");
+        ownerIdCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().get("owner_id"))));
+        ownerIdCol.setEditable(false);
+        ownerIdCol.setSortable(false);
+        ownerIdCol.setPrefWidth(90);
+
+        TableColumn<Map<String, Object>, String> payerIdCol = new TableColumn<>("支付人ID");
+        payerIdCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().get("payer_user_id"))));
+        payerIdCol.setEditable(false);
+        payerIdCol.setSortable(false);
+        payerIdCol.setPrefWidth(90);
+
+        TableColumn<Map<String, Object>, String> spaceIdCol = new TableColumn<>("车位ID");
+        spaceIdCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().get("space_id"))));
+        spaceIdCol.setEditable(false);
+        spaceIdCol.setSortable(false);
+        spaceIdCol.setPrefWidth(70);
+
+        TableColumn<Map<String, Object>, String> paymentIdCol = new TableColumn<>("支付记录ID");
+        paymentIdCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().get("payment_id"))));
+        paymentIdCol.setEditable(false);
+        paymentIdCol.setSortable(false);
+        paymentIdCol.setPrefWidth(100);
+
+        TableColumn<Map<String, Object>, String> amountCol = new TableColumn<>("收益金额");
+        amountCol.setCellValueFactory(c -> {
+            Object val = c.getValue().get("income_amount");
+            return new SimpleStringProperty(val != null ? val.toString() : "");
+        });
+        amountCol.setEditable(false);
+        amountCol.setSortable(false);
+        amountCol.setPrefWidth(90);
+
+        TableColumn<Map<String, Object>, String> statusCol = new TableColumn<>("结算状态");
+        statusCol.setCellValueFactory(c -> {
+            Object val = c.getValue().get("settle_status");
+            return new SimpleStringProperty("SETTLED".equals(val) ? "已结算" : "未结算");
+        });
+        statusCol.setCellFactory(ComboBoxTableCell.forTableColumn(FXCollections.observableArrayList("未结算", "已结算")));
+        statusCol.setOnEditCommit(e -> {
+            try {
+                Object revenueIdObj = e.getRowValue().get("revenue_id");
+                long rid = ((Number) revenueIdObj).longValue();
+                if ("已结算".equals(e.getNewValue())) {
+                    revenueService.settleRevenue(rid);
+                }
+                out.appendText("审核成功\n");
+                addOperationLog(LOG_UPDATE, formatModuleLog("结算审核", "审核收益记录ID=" + rid));
+                reloadRef[0].run();
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+        statusCol.setSortable(false);
+        statusCol.setPrefWidth(90);
+
+        TableColumn<Map<String, Object>, String> settleTimeCol = new TableColumn<>("结算时间");
+        settleTimeCol.setCellValueFactory(c -> {
+            Object val = c.getValue().get("settle_time");
+            return new SimpleStringProperty(val != null ? val.toString() : "");
+        });
+        settleTimeCol.setEditable(false);
+        settleTimeCol.setSortable(false);
+        settleTimeCol.setPrefWidth(140);
+
+        table.getColumns().addAll(revenueIdCol, ownerIdCol, payerIdCol, spaceIdCol, paymentIdCol, amountCol, statusCol, settleTimeCol);
+
+        final int pageSize = 8;
+        final int[] pageNo = {1};
+        table.setFixedCellSize(32);
+        double tableHeight = table.getFixedCellSize() * pageSize + 34;
+        table.setPrefHeight(tableHeight);
+        table.setMinHeight(tableHeight);
+        table.setMaxHeight(tableHeight);
+
+        ComboBox<String> queryStatus = new ComboBox<>(FXCollections.observableArrayList("全部", "未结算", "已结算"));
+        queryStatus.setValue("全部");
+        queryStatus.setPrefWidth(120);
+
+        Label pageInfo = new Label("第1页");
         Runnable reload = () -> {
             try {
-                List<Map<String, Object>> rows = revenueService.queryRevenueForAdmin(settleStatusCode(status.getValue()), 1, 50);
-                out.clear();
-                for (Map<String, Object> row : rows) out.appendText(formatRowMap(row) + "\n\n");
-            } catch (Exception ex) {
-                out.appendText(formatError(ex) + "\n");
-            }
+                List<Map<String, Object>> rows = revenueService.queryRevenueForAdmin(settleStatusCode(queryStatus.getValue()), pageNo[0], pageSize);
+                if (rows.isEmpty() && pageNo[0] > 1) {
+                    pageNo[0]--;
+                    rows = revenueService.queryRevenueForAdmin(settleStatusCode(queryStatus.getValue()), pageNo[0], pageSize);
+                }
+                table.setItems(FXCollections.observableArrayList(rows));
+                pageInfo.setText("第" + pageNo[0] + "页（每页" + pageSize + "条，当前" + rows.size() + "条）");
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
         };
-        query.setOnAction(e -> reload.run());
+        reloadRef[0] = reload;
 
-        Button approve = new Button("\u5ba1\u6838\u7ed3\u7b97"); // 审核结算
-        approve.setOnAction(e -> run(
-                () -> revenueService.settleRevenue(requireLong(revenueId, "\u6536\u76ca\u8bb0\u5f55ID")), // 收益记录ID
-                out,
-                () -> {
-                    revenueId.clear();
-                    reload.run();
-                },
-                LOG_UPDATE,
-                "结算审核",
-                () -> "审核收益记录ID=" + (revenueId.getText() == null ? "" : revenueId.getText().trim())
-        )); // 收益记录ID
+        // Action column with approve button (not delete)
+        TableColumn<Map<String, Object>, Void> actionCol = new TableColumn<>("操作");
+        actionCol.setCellFactory(c -> new TableCell<>() {
+            private final Button approveBtn = new Button("审核");
+            {
+                approveBtn.setStyle("-fx-background-color: #28a745; -fx-text-fill: white; -fx-font-size: 11px;");
+                approveBtn.setOnAction(e -> {
+                    Map<String, Object> row = getTableView().getItems().get(getIndex());
+                    if (row != null) {
+                        try {
+                            Object revenueIdObj = row.get("revenue_id");
+                            long rid = ((Number) revenueIdObj).longValue();
+                            revenueService.settleRevenue(rid);
+                            out.appendText("审核成功，收益记录ID=" + rid + "\n");
+                            addOperationLog(LOG_UPDATE, formatModuleLog("结算审核", "审核收益记录ID=" + rid));
+                            reload.run();
+                        } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+                    }
+                });
+            }
+            @Override
+            protected void updateItem(Void v, boolean empty) {
+                super.updateItem(v, empty);
+                if (empty) { setGraphic(null); return; }
+                Map<String, Object> row = getTableView().getItems().get(getIndex());
+                if (row != null && "SETTLED".equals(row.get("settle_status"))) {
+                    setGraphic(null); // already settled, hide button
+                } else {
+                    setGraphic(approveBtn);
+                }
+            }
+        });
+        actionCol.setSortable(false);
+        actionCol.setPrefWidth(60);
+        table.getColumns().add(actionCol);
 
-        Label queryHint = new Label("\u67e5\u8be2\u8bf4\u660e\uff1a\u53ef\u6309\u7ed3\u7b97\u72b6\u6001\u7b5b\u9009\uff0c\u70b9\u51fb\u201c\u67e5\u8be2\u7ed3\u7b97\u8bb0\u5f55\u201d\u540e\u5217\u51fa\u7ed3\u679c\u3002"); // 查询说明：可按结算状态筛选，点击“查询结算记录”后列出结果。
+        Button query = new Button("查询结算记录");
+        query.setOnAction(e -> { pageNo[0] = 1; reload.run(); });
+        Button prevPage = new Button("上一页");
+        prevPage.setOnAction(e -> {
+            if (pageNo[0] <= 1) { out.appendText("提示：已是第一页\n"); return; }
+            pageNo[0]--;
+            reload.run();
+        });
+        Button nextPage = new Button("下一页");
+        nextPage.setOnAction(e -> {
+            if (table.getItems() == null || table.getItems().size() < pageSize) {
+                out.appendText("提示：已是最后一页\n"); return;
+            }
+            pageNo[0]++;
+            reload.run();
+        });
+
+        HBox queryRow = new HBox(8, queryStatus, query);
+        HBox.setHgrow(queryStatus, Priority.ALWAYS);
+        HBox pageRow = new HBox(8, prevPage, nextPage, pageInfo);
+
+        Label queryHint = new Label("说明：可按结算状态筛选；在[结算状态]列下拉可直接审核；已结算的记录不显示审核按钮。");
+
         VBox body = new VBox(10,
-                sectionBox("\u67e5\u8be2\u533a", new HBox(8, status, query), queryHint), // 查询区
-                sectionBox("\u7ef4\u62a4\u533a\uff08\u5ba1\u6838\u7ed3\u7b97\uff09", new HBox(8, revenueId, approve)), // 维护区（审核结算）
-                sectionBox("\u67e5\u8be2\u7ed3\u679c", out) // 查询结果
-        );
+                sectionBox("查询区", queryRow, pageRow, queryHint),
+                sectionBox("查询结果", table),
+                out);
         body.setPadding(new Insets(10));
+        ScrollPane pageScroll = new ScrollPane(body);
+        pageScroll.setFitToWidth(true);
+        pageScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        pageScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         reload.run();
-
-        Tab tab = new Tab("\u7ed3\u7b97\u5ba1\u6838", body); // 结算审核
+        Tab tab = new Tab("结算审核", pageScroll);
         tab.setClosable(false);
+        tab.setOnSelectionChanged(e -> {
+            if (tab.isSelected()) {
+                pageScroll.setVvalue(0);
+            }
+        });
         return tab;
     }
 
@@ -1413,6 +1846,10 @@ public class DashboardFactory {
         if (ex instanceof java.time.format.DateTimeParseException) {
             return "\u9519\u8bef\uff1a\u65f6\u95f4\u683c\u5f0f\u4e0d\u6b63\u786e\uff0c\u8bf7\u4f7f\u7528 yyyy-MM-ddTHH:mm \u6216 HH:mm"; // 错误：时间格式不正确，请使用 yyyy-MM-ddTHH:mm 或 HH:mm
         }
+                if (ex instanceof java.sql.SQLException || ex.getCause() instanceof java.sql.SQLException) {
+            String sqlMsg = ex.getMessage() != null ? ex.getMessage() : "";
+            return "数据库操作失败，请联系管理员。详情：" + (sqlMsg.isEmpty() ? "未知数据库错误" : sqlMsg);
+        }
         String msg = ex.getMessage();
         String display = (msg == null || msg.isBlank() || "null".equalsIgnoreCase(msg.trim()))
                 ? "\u8f93\u5165\u6709\u8bef\uff0c\u8bf7\u68c0\u67e5\u5fc5\u586b\u9879\u4e0e\u6570\u5b57\u683c\u5f0f" // 输入有误，请检查必填项与数字格式
@@ -1484,6 +1921,26 @@ public class DashboardFactory {
         if ("Insert revenue record failed".equalsIgnoreCase(m)) return "\u751f\u6210\u6536\u76ca\u8bb0\u5f55\u5931\u8d25"; // 生成收益记录失败
         if ("Insert user failed".equalsIgnoreCase(m)) return "\u65b0\u589e\u7528\u6237\u5931\u8d25"; // 新增用户失败
         if ("operationType is required".equalsIgnoreCase(m)) return "\u64cd\u4f5c\u65e5\u5fd7\u7c7b\u578b\u4e0d\u80fd\u4e3a\u7a7a"; // 操作日志类型不能为空
+        if ("User info is required".equalsIgnoreCase(m)) return "用户信息不能为空";
+        if ("Phone must be 11 digits".equalsIgnoreCase(m)) return "手机号必须为11位";
+        if ("fieldName is required".equalsIgnoreCase(m)) return "字段名不能为空";
+        if ("Protected admin user cannot be deleted".equalsIgnoreCase(m)) return "受保护的管理员账号不可删除";
+        if ("User still owns parking spaces".equalsIgnoreCase(m)) return "该用户仍拥有车位，请先处理车位后再删除";
+        if ("User has active parking records".equalsIgnoreCase(m)) return "该用户存在活跃的停车记录，请先处理";
+        if ("User has related reservation/parking/payment/revenue data".equalsIgnoreCase(m)) return "该用户存在关联业务数据（预约/停车/支付/收益），无法删除";
+        if ("Delete user failed".equalsIgnoreCase(m)) return "删除用户失败，可能存在关联数据";
+        if ("create time is required".equalsIgnoreCase(m)) return "创建时间不能为空";
+        if ("create time format must be yyyy-MM-dd HH:mm".equalsIgnoreCase(m)) return "创建时间格式必须为 yyyy-MM-dd HH:mm";
+        if ("Real name is required".equalsIgnoreCase(m)) return "真实姓名不能为空";
+        if ("Phone is required".equalsIgnoreCase(m)) return "手机号不能为空";
+        if ("Old password is required".equalsIgnoreCase(m)) return "旧密码不能为空";
+        if ("User id is required".equalsIgnoreCase(m)) return "用户ID不能为空";
+        if (lower.contains("unsupported user field")) return "不支持的字段名：" + m;
+        if (lower.startsWith("username already exists:")) return "用户名已存在：" + m.substring("username already exists:".length()).trim();
+        if (lower.contains("wrong password, locked for")) return "密码错误，账号已锁定，请稍后再试。详情：" + m;
+        if (lower.startsWith("wrong password,") && lower.contains("attempt")) return "密码错误，" + m.substring("wrong password,".length()).trim();
+        if (lower.startsWith("cooldown:")) return "登录冷却中，剩余" + m.substring("cooldown:".length()).trim() + "秒";
+        if (lower.contains("校验车位关联信息失败")) return m;
         if (lower.contains("character array contains no digits")) return "\u8f93\u5165\u4e0d\u80fd\u4e3a\u7a7a\uff0c\u8bf7\u586b\u5199\u6570\u5b57"; // 输入不能为空，请填写数字
         if (lower.contains("for input string")) return "\u8f93\u5165\u7684\u6570\u5b57\u683c\u5f0f\u4e0d\u6b63\u786e"; // 输入的数字格式不正确
 
@@ -2021,5 +2478,58 @@ public class DashboardFactory {
         box.setPadding(new Insets(10));
         box.getStyleClass().add("section-card");
         return box;
+    }
+
+    private void showAlert(String msg) {
+        Alert alert = new Alert(Alert.AlertType.WARNING);
+        alert.setTitle("提示");
+        alert.setHeaderText(null);
+        alert.setContentText(msg);
+        alert.showAndWait();
+    }
+    private void pushRollback(String label, String moduleName, Runnable restore) {
+        rollbackStack.push(new RollbackEntry(label, moduleName, restore));
+        while (rollbackStack.size() > MAX_ROLLBACK) {
+            rollbackStack.removeLast();
+        }
+    }
+    private Button createRollbackButton(TextArea out, Runnable reload) {
+        Button btn = new Button("回滚");
+        btn.setTooltip(new Tooltip("撤销最近删除（最多" + MAX_ROLLBACK + "条）"));
+        btn.setOnAction(e -> {
+            if (rollbackStack.isEmpty()) { showAlert("没有可回滚的删除操作"); return; }
+            RollbackEntry entry = rollbackStack.pop();
+            try {
+                entry.restore.run();
+                out.appendText("回滚成功：" + entry.label + " 已恢复\n");
+                addOperationLog(LOG_ADD, formatModuleLog(entry.moduleName, "回滚恢复 " + entry.label));
+                reload.run();
+            } catch (Exception ex) {
+                out.appendText("回滚失败：" + formatError(ex) + "\n");
+                rollbackStack.push(entry);
+            }
+        });
+        return btn;
+    }
+    private <T> TableColumn<T, Void> createActionColumn(String header, Consumer<T> onDelete) {
+        TableColumn<T, Void> col = new TableColumn<>(header);
+        col.setCellFactory(c -> new TableCell<>() {
+            private final Button delBtn = new Button("删除");
+            {
+                delBtn.setStyle("-fx-background-color: #dc3545; -fx-text-fill: white; -fx-font-size: 11px;");
+                delBtn.setOnAction(e -> {
+                    T item = getTableView().getItems().get(getIndex());
+                    if (item != null) onDelete.accept(item);
+                });
+            }
+            @Override
+            protected void updateItem(Void v, boolean empty) {
+                super.updateItem(v, empty);
+                setGraphic(empty ? null : delBtn);
+            }
+        });
+        col.setSortable(false);
+        col.setPrefWidth(60);
+        return col;
     }
 }
