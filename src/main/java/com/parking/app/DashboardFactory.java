@@ -470,99 +470,119 @@ public class DashboardFactory {
     }
     private Tab parkingTab(User user) {
         TextField reservationId = new TextField();
-        reservationId.setPromptText("\u9884\u7ea6ID\uff08\u53ef\u9009\uff0c\u65e0\u9884\u7ea6\u53ef\u7559\u7a7a\uff09"); // 预约ID（可选，无预约可留空）
+        reservationId.setPromptText("预约ID（可选，无预约可留空）");
         reservationId.setPrefWidth(320);
-        reservationId.setMinWidth(320);
         TextField lotId = new TextField();
-        lotId.setPromptText("停车场ID（必填）"); // 停车场ID（必填）
+        lotId.setPromptText("停车场ID（必填）");
         lotId.setPrefWidth(190);
-        ComboBox<String> entryType = new ComboBox<>(FXCollections.observableArrayList("地上", "地下")); // 地上 | 地下
-        entryType.setValue("地上"); // 地上
+        ComboBox<String> entryType = new ComboBox<>(FXCollections.observableArrayList("地上", "地下"));
+        entryType.setValue("地上");
         entryType.setPrefWidth(110);
         TextField recordId = new TextField();
-        recordId.setPromptText("\u505c\u8f66\u8bb0\u5f55ID"); // 停车记录ID
+        recordId.setPromptText("停车记录ID");
         TextArea out = new TextArea();
+        out.setEditable(false);
+        out.setPrefRowCount(4);
 
-        Button entry = new Button("\u5165\u573a\u767b\u8bb0"); // 入场登记
+        Button entry = new Button("入场登记");
         entry.setMinWidth(110);
         entry.setOnAction(e -> {
             try {
                 Long reserveId = null;
                 String reserveText = reservationId.getText() == null ? "" : reservationId.getText().trim();
-                if (!reserveText.isEmpty()) {
-                    reserveId = Long.parseLong(reserveText);
-                }
+                if (!reserveText.isEmpty()) reserveId = Long.parseLong(reserveText);
                 ParkingRecordService.AutoEntryResult result = parkingRecordService.entryByLotAndType(
-                        reserveId,
-                        user.getUserId(),
-                        requireLong(lotId, "停车场ID"),
-                        spaceTypeCode(entryType.getValue()),
-                        LocalDateTime.now()
-                );
-                out.appendText("入场登记成功，停车记录ID=" + result.getRecordId() + "，系统分配车位ID=" + result.getSpaceId() + "\n");
-            } catch (NumberFormatException ex) {
-                out.appendText("\u9519\u8bef\uff1a\u9884\u7ea6ID\u5fc5\u987b\u662f\u6570\u5b57\n"); // 错误：预约ID必须是数字\\n
-            } catch (Exception ex) {
-                out.appendText(formatError(ex) + "\n");
-            }
+                        reserveId, user.getUserId(), requireLong(lotId, "停车场ID"),
+                        spaceTypeCode(entryType.getValue()), LocalDateTime.now());
+                out.appendText("入场登记成功，停车记录ID=" + result.getRecordId() + "，分配车位ID=" + result.getSpaceId() + "\n");
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
         });
 
-        Button myRecords = new Button("\u6211\u7684\u505c\u8f66\u8bb0\u5f55"); // 我的停车记录
-        myRecords.setOnAction(e -> {
-            try {
-                List<ParkingRecord> rows = parkingRecordService.getMyParkingRecords(user.getUserId(), 1, 30);
-                for (ParkingRecord r : rows) {
-                    out.appendText(
-                            "\u8bb0\u5f55ID=" + r.getRecordId() // 记录ID=
-                                    + "\uff0c\u9884\u7ea6ID=" + r.getReservationId() // ，预约ID=
-                                    + "\uff0c\u8f66\u4f4dID=" + r.getSpaceId() // ，车位ID=
-                                    + "\uff0c\u5165\u573a\u65f6\u95f4=" + fmtDateTime(r.getEntryTime()) // ，入场时间=
-                                    + "\uff0c\u51fa\u573a\u65f6\u95f4=" + fmtDateTime(r.getExitTime()) // ，出场时间=
-                                    + "\uff0c\u505c\u8f66\u65f6\u957f(\u5206)=" + r.getDuration() // ，停车时长(分)=
-                                    + "\uff0c\u8d39\u7528=" + r.getFee() // ，费用=
-                                    + "\n\n"
-                    );
-                }
-            } catch (Exception ex) {
-                out.appendText(formatError(ex) + "\n");
-            }
-        });
-
-        Button exitAndPay = new Button("\u51fa\u573a\u5e76\u652f\u4ed8"); // 出场并支付
+        Button exitAndPay = new Button("出场并支付");
         exitAndPay.setOnAction(e -> {
             try {
-                BigDecimal fee = parkingRecordService.exitAndPay(requireLong(recordId, "\u505c\u8f66\u8bb0\u5f55ID"), "WECHAT"); // 停车记录ID
-                out.appendText("\u652f\u4ed8\u6210\u529f\uff0c\u8d39\u7528=" + fee + "\n"); // 支付成功，费用=
-            } catch (Exception ex) {
-                out.appendText(formatError(ex) + "\n");
-            }
+                BigDecimal fee = parkingRecordService.exitAndPay(requireLong(recordId, "停车记录ID"), "WECHAT");
+                out.appendText("支付成功，费用=" + fee + "\n");
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
         });
 
-        Button myPayments = new Button("\u6211\u7684\u652f\u4ed8\u8bb0\u5f55"); // 我的支付记录
+        // Parking records table
+        TableView<ParkingRecord> recordsTable = new TableView<>();
+        recordsTable.setEditable(false);
+        TableColumn<ParkingRecord, String> rIdCol = new TableColumn<>("记录ID");
+        rIdCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getRecordId()))); rIdCol.setSortable(false); rIdCol.setPrefWidth(60);
+        TableColumn<ParkingRecord, String> rResvCol = new TableColumn<>("预约ID");
+        rResvCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getReservationId()))); rResvCol.setSortable(false); rResvCol.setPrefWidth(60);
+        TableColumn<ParkingRecord, String> rSpaceCol = new TableColumn<>("车位ID");
+        rSpaceCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getSpaceId()))); rSpaceCol.setSortable(false); rSpaceCol.setPrefWidth(60);
+        TableColumn<ParkingRecord, String> rEntryCol = new TableColumn<>("入场时间");
+        rEntryCol.setCellValueFactory(c -> new SimpleStringProperty(fmtDateTime(c.getValue().getEntryTime()))); rEntryCol.setSortable(false); rEntryCol.setPrefWidth(130);
+        TableColumn<ParkingRecord, String> rExitCol = new TableColumn<>("出场时间");
+        rExitCol.setCellValueFactory(c -> new SimpleStringProperty(fmtDateTime(c.getValue().getExitTime()))); rExitCol.setSortable(false); rExitCol.setPrefWidth(130);
+        TableColumn<ParkingRecord, String> rDurCol = new TableColumn<>("时长(分)");
+        rDurCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getDuration() != null ? String.valueOf(c.getValue().getDuration()) : "")); rDurCol.setSortable(false); rDurCol.setPrefWidth(80);
+        TableColumn<ParkingRecord, String> rFeeCol = new TableColumn<>("费用");
+        rFeeCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getFee() != null ? c.getValue().getFee().toString() : "")); rFeeCol.setSortable(false); rFeeCol.setPrefWidth(80);
+        recordsTable.getColumns().addAll(rIdCol, rResvCol, rSpaceCol, rEntryCol, rExitCol, rDurCol, rFeeCol);
+        recordsTable.setFixedCellSize(26);
+        double rth = recordsTable.getFixedCellSize() * 8 + 34;
+        recordsTable.setPrefHeight(rth); recordsTable.setMinHeight(rth); recordsTable.setMaxHeight(rth);
+
+        Button myRecords = new Button("我的停车记录");
+        myRecords.setOnAction(e -> {
+            try {
+                List<ParkingRecord> rows = parkingRecordService.getMyParkingRecords(user.getUserId(), 1, 100);
+                recordsTable.setItems(FXCollections.observableArrayList(rows));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+        });
+
+        // Payment records table
+        TableView<Map<String, Object>> paymentsTable = new TableView<>();
+        paymentsTable.setEditable(false);
+        TableColumn<Map<String, Object>, String> pIdCol = new TableColumn<>("支付ID");
+        pIdCol.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().get("payment_id"))));
+        pIdCol.setSortable(false); pIdCol.setPrefWidth(60);
+        TableColumn<Map<String, Object>, String> pAmtCol = new TableColumn<>("金额");
+        pAmtCol.setCellValueFactory(c -> { Object v = c.getValue().get("amount"); return new SimpleStringProperty(v != null ? v.toString() : ""); });
+        pAmtCol.setSortable(false); pAmtCol.setPrefWidth(70);
+        TableColumn<Map<String, Object>, String> pStatusCol = new TableColumn<>("支付状态");
+        pStatusCol.setCellValueFactory(c -> { Object v = c.getValue().get("payment_status"); String s = v != null ? v.toString() : ""; return new SimpleStringProperty("PAID".equals(s) ? "已支付" : s); });
+        pStatusCol.setSortable(false); pStatusCol.setPrefWidth(70);
+        TableColumn<Map<String, Object>, String> pTimeCol = new TableColumn<>("支付时间");
+        pTimeCol.setCellValueFactory(c -> { Object v = c.getValue().get("payment_time"); return new SimpleStringProperty(v != null ? v.toString() : ""); });
+        pTimeCol.setSortable(false); pTimeCol.setPrefWidth(130);
+        paymentsTable.getColumns().addAll(pIdCol, pAmtCol, pStatusCol, pTimeCol);
+        paymentsTable.setFixedCellSize(26);
+        double pth = paymentsTable.getFixedCellSize() * 8 + 34;
+        paymentsTable.setPrefHeight(pth); paymentsTable.setMinHeight(pth); paymentsTable.setMaxHeight(pth);
+
+        Button myPayments = new Button("我的支付记录");
         myPayments.setOnAction(e -> {
             try {
-                List<Map<String, Object>> rows = paymentService.getMyPayments(user.getUserId(), "", 1, 30);
-                for (Map<String, Object> row : rows) {
-                    out.appendText(formatRowMap(row) + "\n\n");
-                }
-            } catch (Exception ex) {
-                out.appendText(formatError(ex) + "\n");
-            }
+                List<Map<String, Object>> rows = paymentService.getMyPayments(user.getUserId(), "", 1, 100);
+                paymentsTable.setItems(FXCollections.observableArrayList(rows));
+            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
         });
 
         VBox body = new VBox(10,
-                sectionBox("\u505c\u8f66\u5165\u573a", // 停车入场
+                sectionBox("停车入场",
                         new HBox(8, reservationId, lotId, entryType, entry)),
-                sectionBox("\u51fa\u573a\u7f34\u8d39", // 出场缴费
-                        new HBox(8, recordId, exitAndPay)),
-                sectionBox("\u67e5\u8be2", // 查询
-                        new HBox(8, myRecords, myPayments)),
-                out);
+                sectionBox("出场缴费",
+                        new HBox(8, recordId, exitAndPay), out),
+                sectionBox("停车记录", myRecords, recordsTable),
+                sectionBox("支付记录", myPayments, paymentsTable));
         body.setPadding(new Insets(10));
-        Tab tab = new Tab("\u505c\u8f66\u4e0e\u652f\u4ed8", body); // 停车与支付
+
+        ScrollPane pageScroll = new ScrollPane(body);
+        pageScroll.setFitToWidth(true);
+        pageScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        pageScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+
+        Tab tab = new Tab("停车与支付", pageScroll);
         tab.setClosable(false);
         return tab;
     }
+
     private Tab userTab() {
         final TextArea out = new TextArea();
         final Runnable[] reloadRef = new Runnable[1];
