@@ -346,26 +346,33 @@ public class DashboardFactory {
             }
         } catch (Exception ex) { /* ignore */ }
 
-        // Helper to create filterable ComboBox
+        // Helper to create filterable ComboBox (with debounce for performance)
         java.util.function.Function<java.util.List<String>, ComboBox<String>> createFilterableCombo = (items) -> {
-            ComboBox<String> cb = new ComboBox<>(FXCollections.observableArrayList(items));
+            ComboBox<String> cb = new ComboBox<>();
             cb.setEditable(true);
             cb.setPrefWidth(240);
+            cb.setVisibleRowCount(8);
+            final javafx.collections.ObservableList<String> backingList = FXCollections.observableArrayList(items);
+            cb.setItems(backingList);
+
+            // Use a single-thread debounce via a flag
+            final boolean[] pending = {false};
             cb.getEditor().textProperty().addListener((obs, oldVal, newVal) -> {
-                String text = (newVal == null) ? "" : newVal;
+                if (pending[0]) return;
+                pending[0] = true;
                 javafx.application.Platform.runLater(() -> {
+                    pending[0] = false;
+                    String text = cb.getEditor().getText();
+                    if (text == null) text = "";
                     if (text.isEmpty()) {
-                        cb.setItems(FXCollections.observableArrayList(items));
+                        backingList.setAll(items);
                     } else {
                         String filter = text.toLowerCase();
                         java.util.List<String> filtered = new java.util.ArrayList<>();
                         for (String item : items) {
                             if (item.toLowerCase().contains(filter)) filtered.add(item);
                         }
-                        cb.setItems(FXCollections.observableArrayList(filtered));
-                        if (!filtered.isEmpty() && !filtered.contains(cb.getEditor().getText())) {
-                            cb.getEditor().setText(text);
-                        }
+                        backingList.setAll(filtered);
                     }
                 });
             });
