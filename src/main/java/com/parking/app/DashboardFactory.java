@@ -1668,24 +1668,37 @@ public class DashboardFactory {
     }
 
     private Tab reportTab() {
-        StackPane incomeChartPane = new StackPane(new Label("请点击[收入排行]查看图表"));
-        StackPane reserveChartPane = new StackPane(new Label("请点击[预约排行]查看图表"));
-        StackPane usageChartPane = new StackPane(new Label("请选择模式后点击[入场统计]查看图表"));
-
-        incomeChartPane.setPrefHeight(350);
+        ScrollPane incomeChartPane = new ScrollPane(new Label("请点击[收入排行]查看图表"));
+        incomeChartPane.setFitToHeight(true);
+        incomeChartPane.setFitToWidth(false);
+        incomeChartPane.setPrefHeight(380);
+        incomeChartPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        incomeChartPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         incomeChartPane.setStyle("-fx-background-color: #f8fafc; -fx-border-color: #e2e8f0;");
-        reserveChartPane.setPrefHeight(350);
+
+        ScrollPane reserveChartPane = new ScrollPane(new Label("请点击[预约排行]查看图表"));
+        reserveChartPane.setFitToHeight(true);
+        reserveChartPane.setFitToWidth(false);
+        reserveChartPane.setPrefHeight(380);
+        reserveChartPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        reserveChartPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         reserveChartPane.setStyle("-fx-background-color: #f8fafc; -fx-border-color: #e2e8f0;");
-        usageChartPane.setPrefHeight(350);
+
+        ScrollPane usageChartPane = new ScrollPane(new Label("请选择模式后点击[入场统计]查看图表"));
+        usageChartPane.setFitToHeight(true);
+        usageChartPane.setFitToWidth(false);
+        usageChartPane.setPrefHeight(380);
+        usageChartPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        usageChartPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         usageChartPane.setStyle("-fx-background-color: #f8fafc; -fx-border-color: #e2e8f0;");
 
         Button income = new Button("收入排行");
         income.setOnAction(e -> {
             try {
                 List<Map<String, Object>> rows = reportService.incomeByLot();
-                incomeChartPane.getChildren().setAll(createIncomeChart(rows));
+                incomeChartPane.setContent(createIncomeChart(rows));
             } catch (Exception ex) {
-                incomeChartPane.getChildren().setAll(new Label(formatError(ex)));
+                incomeChartPane.setContent(new Label(formatError(ex)));
             }
         });
 
@@ -1693,9 +1706,9 @@ public class DashboardFactory {
         reserve.setOnAction(e -> {
             try {
                 List<Map<String, Object>> rows = reportService.reservationCountBySpace();
-                reserveChartPane.getChildren().setAll(createReservationChart(rows));
+                reserveChartPane.setContent(createReservationChart(rows));
             } catch (Exception ex) {
-                reserveChartPane.getChildren().setAll(new Label(formatError(ex)));
+                reserveChartPane.setContent(new Label(formatError(ex)));
             }
         });
 
@@ -1726,9 +1739,9 @@ public class DashboardFactory {
                 } else {
                     rows.sort(Comparator.comparingInt(r -> safeToInt(r.get("hour_slot"))));
                 }
-                usageChartPane.getChildren().setAll(createUsageChart(rows, mode));
+                usageChartPane.setContent(createUsageChart(rows, mode));
             } catch (Exception ex) {
-                usageChartPane.getChildren().setAll(new Label(formatError(ex)));
+                usageChartPane.setContent(new Label(formatError(ex)));
             }
         });
 
@@ -1765,6 +1778,9 @@ public class DashboardFactory {
         chart.setTitle("停车场收入排行");
         chart.setLegendVisible(false);
         chart.setAnimated(false);
+        chart.setBarGap(4);
+        chart.setCategoryGap(20);
+        chart.setMinWidth(Math.max(600, rows.size() * 90));
 
         XYChart.Series<String, Number> series = new XYChart.Series<>();
         for (Map<String, Object> row : rows) {
@@ -1785,6 +1801,7 @@ public class DashboardFactory {
         StackedBarChart<String, Number> chart = new StackedBarChart<>(xAxis, yAxis);
         chart.setTitle("停车场预约次数排行（地上/地下）");
         chart.setAnimated(false);
+        chart.setCategoryGap(20);
 
         java.util.Set<String> allLots = new java.util.LinkedHashSet<>();
         java.util.Map<String, Long> groundMap = new java.util.HashMap<>();
@@ -1813,6 +1830,7 @@ public class DashboardFactory {
         }
 
         chart.getData().addAll(groundSeries, underSeries);
+        chart.setMinWidth(Math.max(600, allLots.size() * 100));
 
         // Apply colors: green for ground, orange for underground
         for (XYChart.Data<String, Number> d : groundSeries.getData()) {
@@ -1839,6 +1857,9 @@ public class DashboardFactory {
         chart.setTitle("入场统计 (" + mode + ")");
         chart.setLegendVisible(false);
         chart.setAnimated(false);
+        chart.setBarGap(4);
+        chart.setCategoryGap(10);
+        chart.setMinWidth(700);
 
         XYChart.Series<String, Number> series = new XYChart.Series<>();
         for (Map<String, Object> row : rows) {
