@@ -1928,25 +1928,29 @@ public class DashboardFactory {
 
         table.getColumns().addAll(logIdCol, userIdCol, usernameCol, opTypeCol, descCol, timeCol);
 
-        final int pageSize = 20;
+        final int[] pageSize = {20};
         final int[] pageNo = {1};
         table.setFixedCellSize(28);
-        double tableHeight = table.getFixedCellSize() * pageSize + 34;
-        table.setPrefHeight(tableHeight);
-        table.setMinHeight(tableHeight);
-        table.setMaxHeight(tableHeight);
+
+        Runnable updateTableHeight = () -> {
+            double h = table.getFixedCellSize() * pageSize[0] + 34;
+            table.setPrefHeight(h);
+            table.setMinHeight(h);
+            table.setMaxHeight(h);
+        };
+        updateTableHeight.run();
 
         Label pageInfo = new Label("第1页");
 
         Runnable reload = () -> {
             try {
-                List<Map<String, Object>> rows = operationLogService.queryLogs(keyword.getText(), logCategoryCode(categoryBox.getValue()), pageNo[0], pageSize);
+                List<Map<String, Object>> rows = operationLogService.queryLogs(keyword.getText(), logCategoryCode(categoryBox.getValue()), pageNo[0], pageSize[0]);
                 if (rows.isEmpty() && pageNo[0] > 1) {
                     pageNo[0]--;
-                    rows = operationLogService.queryLogs(keyword.getText(), logCategoryCode(categoryBox.getValue()), pageNo[0], pageSize);
+                    rows = operationLogService.queryLogs(keyword.getText(), logCategoryCode(categoryBox.getValue()), pageNo[0], pageSize[0]);
                 }
                 table.setItems(FXCollections.observableArrayList(rows));
-                pageInfo.setText("第" + pageNo[0] + "页（每页" + pageSize + "条，当前" + rows.size() + "条）");
+                pageInfo.setText("第" + pageNo[0] + "页（每页" + pageSize[0] + "条，当前" + rows.size() + "条）");
             } catch (Exception ex) {
                 // show error in a label or just log to console
             }
@@ -1965,7 +1969,7 @@ public class DashboardFactory {
         });
         Button next = new Button("下一页");
         next.setOnAction(e -> {
-            if (table.getItems() == null || table.getItems().size() < pageSize) return;
+            if (table.getItems() == null || table.getItems().size() < pageSize[0]) return;
             pageNo[0]++;
             reload.run();
         });
@@ -1988,10 +1992,20 @@ public class DashboardFactory {
             }
         });
 
+        ComboBox<Integer> pageSizeBox = new ComboBox<>(FXCollections.observableArrayList(10, 20, 30, 50));
+        pageSizeBox.setValue(20);
+        pageSizeBox.setPrefWidth(70);
+        pageSizeBox.setOnAction(e -> {
+            pageSize[0] = pageSizeBox.getValue();
+            updateTableHeight.run();
+            pageNo[0] = 1;
+            reload.run();
+        });
+
         Label hint = new Label("说明：可按关键字和分类（全部/新增/删除/修改/登录）筛选日志，操作描述会标注【模块名称】。");
         HBox queryRow = new HBox(8, keyword, categoryBox, query, clearLogs);
         HBox.setHgrow(keyword, Priority.ALWAYS);
-        HBox pageRow = new HBox(8, prev, next, pageInfo);
+        HBox pageRow = new HBox(8, prev, next, pageInfo, new Label("每页"), pageSizeBox, new Label("条"));
 
         VBox body = new VBox(10,
                 sectionBox("查询区", queryRow, pageRow, hint),
