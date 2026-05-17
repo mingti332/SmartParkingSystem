@@ -45,6 +45,51 @@ public class PricingRuleServiceImpl implements PricingRuleService {
     }
 
     @Override
+    public void updateRuleField(Long ruleId, String fieldName, String fieldValue) throws SQLException {
+        if (ruleId == null) {
+            throw new ServiceException("规则ID不能为空");
+        }
+        if (fieldName == null || fieldName.isBlank()) {
+            throw new ServiceException("字段名不能为空");
+        }
+        PricingRule existing = pricingRuleDao.findById(ruleId);
+        if (existing == null) {
+            throw new ServiceException("计费规则不存在");
+        }
+        String field = fieldName.trim().toLowerCase();
+        Object value = fieldValue == null ? "" : fieldValue.trim();
+        switch (field) {
+            case "rule_name":
+                if (value.toString().isEmpty()) throw new ServiceException("规则名称不能为空");
+                break;
+            case "charge_type":
+                if (value.toString().isEmpty()) throw new ServiceException("计费方式不能为空");
+                if (!"HOURLY".equalsIgnoreCase(value.toString()) && !"FIXED".equalsIgnoreCase(value.toString())) {
+                    throw new ServiceException("计费方式只能为按时计费或按次计费");
+                }
+                break;
+            case "unit_price":
+                value = value.toString().isEmpty() ? null : new java.math.BigDecimal(value.toString());
+                break;
+            case "unit_time":
+                value = value.toString().isEmpty() ? null : Integer.parseInt(value.toString());
+                break;
+            case "fixed_price":
+                value = value.toString().isEmpty() ? null : new java.math.BigDecimal(value.toString());
+                break;
+            case "applicable_space_type":
+                if (value.toString().isEmpty()) throw new ServiceException("适用车位类型不能为空");
+                break;
+            case "status":
+                value = Integer.parseInt(value.toString());
+                break;
+        }
+        if (pricingRuleDao.updateRuleField(ruleId, fieldName, value) == 0) {
+            throw new ServiceException("计费规则不存在");
+        }
+    }
+
+    @Override
     public List<PricingRule> queryRules(String keyword, String chargeType, Integer status, int pageNo, int pageSize) throws SQLException {
         return pricingRuleDao.search(keyword, chargeType, status, pageNo, pageSize);
     }

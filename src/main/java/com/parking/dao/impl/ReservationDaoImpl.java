@@ -76,11 +76,21 @@ public class ReservationDaoImpl implements ReservationDao {
         String sql = """
                 UPDATE Reservations
                 SET status = 'CANCELED', cancel_time = NOW()
-                WHERE reservation_id = ? AND user_id = ? AND status = 'PENDING'
+                WHERE reservation_id = ? AND user_id = ? AND status IN ('PENDING','ACTIVE')
                 """;
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, reservationId);
             ps.setLong(2, userId);
+            return ps.executeUpdate();
+        }
+    }
+
+    @Override
+    public int updateStatus(Connection conn, Long reservationId, String status) throws SQLException {
+        String sql = "UPDATE Reservations SET status = ? WHERE reservation_id = ?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, status);
+            ps.setLong(2, reservationId);
             return ps.executeUpdate();
         }
     }

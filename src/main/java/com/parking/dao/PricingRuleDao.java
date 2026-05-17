@@ -15,6 +15,8 @@ public interface PricingRuleDao {
 
     int deleteById(Long ruleId) throws SQLException;
 
+    int updateRuleField(Long ruleId, String fieldName, Object value) throws SQLException;
+
     PricingRule findById(Long ruleId) throws SQLException;
 
     List<PricingRule> search(String keyword, String chargeType, Integer status, int pageNo, int pageSize) throws SQLException;

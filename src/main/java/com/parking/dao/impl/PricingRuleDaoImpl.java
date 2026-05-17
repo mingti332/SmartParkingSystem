@@ -83,6 +83,46 @@ public class PricingRuleDaoImpl implements PricingRuleDao {
     }
 
     @Override
+    public int updateRuleField(Long ruleId, String fieldName, Object value) throws SQLException {
+        if (fieldName == null || fieldName.isBlank()) {
+            throw new SQLException("Field name is required");
+        }
+        String column;
+        switch (fieldName.trim().toLowerCase()) {
+            case "rule_name":
+                column = "rule_name";
+                break;
+            case "charge_type":
+                column = "charge_type";
+                break;
+            case "unit_price":
+                column = "unit_price";
+                break;
+            case "unit_time":
+                column = "unit_time";
+                break;
+            case "fixed_price":
+                column = "fixed_price";
+                break;
+            case "applicable_space_type":
+                column = "applicable_space_type";
+                break;
+            case "status":
+                column = "status";
+                break;
+            default:
+                throw new SQLException("Unsupported pricing rule field: " + fieldName);
+        }
+        String sql = "UPDATE PricingRules SET " + column + " = ? WHERE rule_id = ?";
+        try (Connection conn = DbUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setObject(1, value);
+            ps.setLong(2, ruleId);
+            return ps.executeUpdate();
+        }
+    }
+
+    @Override
     public PricingRule findById(Long ruleId) throws SQLException {
         String sql = """
                 SELECT rule_id, rule_name, charge_type, unit_price, unit_time, fixed_price, applicable_space_type, status

@@ -16,30 +16,25 @@ public class ParkingLotDaoImpl implements ParkingLotDao {
     @Override
     public long insert(ParkingLot lot) throws SQLException {
         String insertSql = """
-                INSERT INTO ParkingLots(lot_id, lot_name, address, total_spaces, open_time, close_time, description)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO ParkingLots(lot_name, address, total_spaces, open_time, close_time, description)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """;
-        try (Connection conn = DbUtil.getConnection()) {
-            for (int i = 0; i < 5; i++) {
-                long nextId = findReusableId(conn);
-                try (PreparedStatement ps = conn.prepareStatement(insertSql)) {
-                    ps.setLong(1, nextId);
-                    ps.setString(2, lot.getLotName());
-                    ps.setString(3, lot.getAddress());
-                    ps.setInt(4, lot.getTotalSpaces());
-                    ps.setTime(5, lot.getOpenTime() == null ? null : Time.valueOf(lot.getOpenTime()));
-                    ps.setTime(6, lot.getCloseTime() == null ? null : Time.valueOf(lot.getCloseTime()));
-                    ps.setString(7, lot.getDescription());
-                    ps.executeUpdate();
-                    return nextId;
-                } catch (SQLException ex) {
-                    if (!isDuplicateKey(ex)) {
-                        throw ex;
-                    }
+        try (Connection conn = DbUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(insertSql, PreparedStatement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, lot.getLotName());
+            ps.setString(2, lot.getAddress());
+            ps.setInt(3, lot.getTotalSpaces());
+            ps.setTime(4, lot.getOpenTime() == null ? null : Time.valueOf(lot.getOpenTime()));
+            ps.setTime(5, lot.getCloseTime() == null ? null : Time.valueOf(lot.getCloseTime()));
+            ps.setString(6, lot.getDescription());
+            ps.executeUpdate();
+            try (ResultSet generatedKeys = ps.getGeneratedKeys()) {
+                if (generatedKeys.next()) {
+                    return generatedKeys.getLong(1);
                 }
             }
+            throw new SQLException("Insert parking lot succeeded but no ID was generated");
         }
-        throw new SQLException("Insert parking lot failed");
     }
 
     @Override
@@ -68,6 +63,43 @@ public class ParkingLotDaoImpl implements ParkingLotDao {
         try (Connection conn = DbUtil.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, lotId);
+            return ps.executeUpdate();
+        }
+    }
+
+    @Override
+    public int updateLotField(Long lotId, String fieldName, Object value) throws SQLException {
+        if (fieldName == null || fieldName.isBlank()) {
+            throw new SQLException("Field name is required");
+        }
+        String column;
+        switch (fieldName.trim().toLowerCase()) {
+            case "lot_name":
+                column = "lot_name";
+                break;
+            case "address":
+                column = "address";
+                break;
+            case "total_spaces":
+                column = "total_spaces";
+                break;
+            case "open_time":
+                column = "open_time";
+                break;
+            case "close_time":
+                column = "close_time";
+                break;
+            case "description":
+                column = "description";
+                break;
+            default:
+                throw new SQLException("Unsupported parking lot field: " + fieldName);
+        }
+        String sql = "UPDATE ParkingLots SET " + column + " = ? WHERE lot_id = ?";
+        try (Connection conn = DbUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setObject(1, value);
+            ps.setLong(2, lotId);
             return ps.executeUpdate();
         }
     }
@@ -116,34 +148,6 @@ public class ParkingLotDaoImpl implements ParkingLotDao {
             }
         }
         return list;
-    }
-
-    private long findReusableId(Connection conn) throws SQLException {
-        String sql = """
-                SELECT MIN(t.candidate_id) AS next_id
-                FROM (
-                    SELECT 1 AS candidate_id
-                    UNION ALL
-                    SELECT lot_id + 1 AS candidate_id
-                    FROM ParkingLots
-                ) t
-                LEFT JOIN ParkingLots p ON p.lot_id = t.candidate_id
-                WHERE p.lot_id IS NULL
-                """;
-        try (PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-            if (rs.next()) {
-                long id = rs.getLong("next_id");
-                if (id > 0) {
-                    return id;
-                }
-            }
-        }
-        return 1L;
-    }
-
-    private boolean isDuplicateKey(SQLException ex) {
-        return "23000".equals(ex.getSQLState()) || ex.getErrorCode() == 1062;
     }
 
     private ParkingLot mapRow(ResultSet rs) throws SQLException {

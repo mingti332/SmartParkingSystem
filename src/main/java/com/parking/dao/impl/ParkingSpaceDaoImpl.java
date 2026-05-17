@@ -78,6 +78,46 @@ public class ParkingSpaceDaoImpl implements ParkingSpaceDao {
     }
 
     @Override
+    public int updateSpaceField(Long spaceId, String fieldName, Object value) throws SQLException {
+        if (fieldName == null || fieldName.isBlank()) {
+            throw new SQLException("Field name is required");
+        }
+        String column;
+        switch (fieldName.trim().toLowerCase()) {
+            case "lot_id":
+                column = "lot_id";
+                break;
+            case "owner_id":
+                column = "owner_id";
+                break;
+            case "space_number":
+                column = "space_number";
+                break;
+            case "type":
+                column = "type";
+                break;
+            case "status":
+                column = "status";
+                break;
+            case "share_start_time":
+                column = "share_start_time";
+                break;
+            case "share_end_time":
+                column = "share_end_time";
+                break;
+            default:
+                throw new SQLException("Unsupported parking space field: " + fieldName);
+        }
+        String sql = "UPDATE ParkingSpaces SET " + column + " = ? WHERE space_id = ?";
+        try (Connection conn = DbUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setObject(1, value);
+            ps.setLong(2, spaceId);
+            return ps.executeUpdate();
+        }
+    }
+
+    @Override
     public List<ParkingSpace> search(String keyword, String status, Long lotId, int pageNo, int pageSize) throws SQLException {
         StringBuilder sql = new StringBuilder("""
                 SELECT space_id, lot_id, owner_id, space_number, type, status, share_start_time, share_end_time

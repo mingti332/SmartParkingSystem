@@ -14,6 +14,8 @@ public interface ParkingSpaceService {
 
     void removeSpace(Long spaceId) throws SQLException;
 
+    void updateSpaceField(Long spaceId, String fieldName, String fieldValue) throws SQLException;
+
     List<ParkingSpace> querySpaces(String keyword, String status, Long lotId, int pageNo, int pageSize) throws SQLException;
 
     List<ParkingSpace> queryMySpaces(Long ownerId, int pageNo, int pageSize) throws SQLException;

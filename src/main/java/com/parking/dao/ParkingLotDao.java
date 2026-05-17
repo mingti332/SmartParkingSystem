@@ -12,6 +12,8 @@ public interface ParkingLotDao {
 
     int deleteById(Long lotId) throws SQLException;
 
+    int updateLotField(Long lotId, String fieldName, Object value) throws SQLException;
+
     ParkingLot findById(Long lotId) throws SQLException;
 
     List<ParkingLot> search(String keyword, int pageNo, int pageSize) throws SQLException;

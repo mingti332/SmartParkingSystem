@@ -1,10 +1,13 @@
 package com.parking.service.impl;
 
 import com.parking.config.DbUtil;
+import com.parking.dao.ParkingLotDao;
 import com.parking.dao.ParkingSpaceDao;
 import com.parking.dao.ReservationDao;
+import com.parking.dao.impl.ParkingLotDaoImpl;
 import com.parking.dao.impl.ParkingSpaceDaoImpl;
 import com.parking.dao.impl.ReservationDaoImpl;
+import com.parking.entity.ParkingLot;
 import com.parking.entity.Reservation;
 import com.parking.service.ReservationService;
 import com.parking.service.ServiceException;
@@ -20,6 +23,7 @@ import java.util.stream.Collectors;
 public class ReservationServiceImpl implements ReservationService {
     private final ReservationDao reservationDao = new ReservationDaoImpl();
     private final ParkingSpaceDao parkingSpaceDao = new ParkingSpaceDaoImpl();
+    private final ParkingLotDao parkingLotDao = new ParkingLotDaoImpl();
 
     @Override
     public long reserve(Long userId, Long spaceId, LocalDateTime reserveStart, LocalDateTime reserveEnd) throws SQLException {
@@ -29,6 +33,12 @@ public class ReservationServiceImpl implements ReservationService {
         if (reserveStart.isBefore(LocalDateTime.now())) {
             throw new ServiceException("预约失败，输入时间有误：开始时间不能早于当前时间");
         }
+
+        com.parking.entity.ParkingSpace space = parkingSpaceDao.findById(spaceId);
+        if (space == null) {
+            throw new ServiceException("未找到对应车位");
+        }
+        validateLotBusinessHours(space.getLotId(), reserveStart, reserveEnd);
 
         try (Connection conn = DbUtil.getConnection()) {
             conn.setAutoCommit(false);
@@ -73,6 +83,8 @@ public class ReservationServiceImpl implements ReservationService {
             throw new ServiceException("预约失败，输入时间有误：开始时间不能早于当前时间");
         }
         String typeCode = normalizeSpaceType(spaceType);
+
+        validateLotBusinessHours(lotId, reserveStart, reserveEnd);
 
         List<com.parking.entity.ParkingSpace> matchedSpaces = loadSpacesByLotAndType(lotId, typeCode);
         if (matchedSpaces.isEmpty()) {
@@ -158,6 +170,24 @@ public class ReservationServiceImpl implements ReservationService {
     @Override
     public List<Reservation> getOwnerReservations(Long ownerId, int pageNo, int pageSize) throws SQLException {
         return reservationDao.findByOwner(ownerId, pageNo, pageSize);
+    }
+
+    private void validateLotBusinessHours(Long lotId, LocalDateTime reserveStart, LocalDateTime reserveEnd) throws SQLException {
+        ParkingLot lot = parkingLotDao.findById(lotId);
+        if (lot == null || lot.is24Hour()) {
+            return;
+        }
+        if (lot.getOpenTime() != null && lot.getCloseTime() != null) {
+            LocalTime startTime = reserveStart.toLocalTime();
+            LocalTime endTime = reserveEnd.toLocalTime();
+            if (startTime.isBefore(lot.getOpenTime())) {
+                throw new ServiceException("预约失败：开始时间早于停车场营业开始时间 " + lot.getOpenTime());
+            }
+            boolean sameDay = reserveStart.toLocalDate().equals(reserveEnd.toLocalDate());
+            if (sameDay && endTime.isAfter(lot.getCloseTime())) {
+                throw new ServiceException("预约失败：结束时间晚于停车场营业结束时间 " + lot.getCloseTime());
+            }
+        }
     }
 
     private String normalizeSpaceType(String input) {

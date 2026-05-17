@@ -3,6 +3,7 @@ package com.parking.service.impl;
 import com.parking.config.DbUtil;
 import com.parking.dao.*;
 import com.parking.dao.impl.*;
+import com.parking.entity.ParkingLot;
 import com.parking.entity.ParkingRecord;
 import com.parking.entity.ParkingSpace;
 import com.parking.entity.PricingRule;
@@ -26,6 +27,7 @@ import java.util.stream.Collectors;
 public class ParkingRecordServiceImpl implements ParkingRecordService {
     private final ParkingRecordDao parkingRecordDao = new ParkingRecordDaoImpl();
     private final ParkingSpaceDao parkingSpaceDao = new ParkingSpaceDaoImpl();
+    private final ParkingLotDao parkingLotDao = new ParkingLotDaoImpl();
     private final PricingRuleDao pricingRuleDao = new PricingRuleDaoImpl();
     private final ReservationDao reservationDao = new ReservationDaoImpl();
     private final PaymentRecordDao paymentRecordDao = new PaymentRecordDaoImpl();
@@ -46,6 +48,18 @@ public class ParkingRecordServiceImpl implements ParkingRecordService {
                 }
                 if ("OCCUPIED".equalsIgnoreCase(space.getStatus())) {
                     throw new ServiceException("该车位当前已占用，无法入场");
+                }
+
+                ParkingLot lot = parkingLotDao.findById(space.getLotId());
+                if (lot != null && !lot.is24Hour()
+                        && lot.getOpenTime() != null && lot.getCloseTime() != null) {
+                    LocalTime nowTime = now.toLocalTime();
+                    if (nowTime.isBefore(lot.getOpenTime())) {
+                        throw new ServiceException("当前未到停车场营业时间 " + lot.getOpenTime());
+                    }
+                    if (nowTime.isAfter(lot.getCloseTime())) {
+                        throw new ServiceException("当前已过停车场营业结束时间 " + lot.getCloseTime());
+                    }
                 }
 
                 boolean passByReservation = false;
@@ -70,7 +84,7 @@ public class ParkingRecordServiceImpl implements ParkingRecordService {
                     if (space.getShareStartTime() != null && now.toLocalTime().isBefore(space.getShareStartTime())) {
                         throw new ServiceException("当前未到该车位共享开始时间");
                     }
-                    if (space.getShareEndTime() != null && !now.toLocalTime().isBefore(space.getShareEndTime())) {
+                    if (space.getShareEndTime() != null && now.toLocalTime().isAfter(space.getShareEndTime())) {
                         throw new ServiceException("当前已超过该车位共享结束时间");
                     }
                 }
@@ -78,6 +92,9 @@ public class ParkingRecordServiceImpl implements ParkingRecordService {
                 long recordId = parkingRecordDao.insertEntry(
                         conn, reservationId, userId, spaceId, now);
                 parkingSpaceDao.updateStatus(conn, spaceId, "OCCUPIED");
+                if (reservationId != null) {
+                    reservationDao.updateStatus(conn, reservationId, "ACTIVE");
+                }
                 conn.commit();
                 return recordId;
             } catch (Exception e) {
@@ -188,6 +205,9 @@ public class ParkingRecordServiceImpl implements ParkingRecordService {
                         payMethod == null ? "CASH" : payMethod);
                 revenueRecordDao.insertUnsettled(conn, meta.getOwnerId(), record.getSpaceId(), paymentId, fee);
                 parkingSpaceDao.updateStatus(conn, record.getSpaceId(), "FREE");
+                if (record.getReservationId() != null) {
+                    reservationDao.updateStatus(conn, record.getReservationId(), "COMPLETED");
+                }
 
                 conn.commit();
                 return fee;
@@ -248,7 +268,7 @@ public class ParkingRecordServiceImpl implements ParkingRecordService {
             if (s.getSpaceId() == null) continue;
             if ("OCCUPIED".equalsIgnoreCase(s.getStatus())) continue;
             if (s.getShareStartTime() != null && nowTime.isBefore(s.getShareStartTime())) continue;
-            if (s.getShareEndTime() != null && !nowTime.isBefore(s.getShareEndTime())) continue;
+            if (s.getShareEndTime() != null && nowTime.isAfter(s.getShareEndTime())) continue;
             ids.add(s.getSpaceId());
         }
         return ids;

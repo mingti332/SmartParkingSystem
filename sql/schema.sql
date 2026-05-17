@@ -116,9 +116,9 @@ CREATE INDEX idx_log_user_time ON OperationLogs (user_id, create_time);
 
 INSERT INTO Users (username, password, real_name, phone, role)
 VALUES
-('admin', '123456', '系统管理员', '13800000001', 'ADMIN'),
-('owner01', 'owner123', '车位主1', '13800000002', 'OWNER'),
-('driver01', 'driver123', '车主1', '13800000003', 'CAR_OWNER');
+('admin', '9c0454cebff56335810a376883e232d7ecb1538dcd3b49250f5839f9a7aa1506', '系统管理员', '13800000001', 'ADMIN'),
+('owner01', 'ea97ebd1d9743a08c0324f50c086f800b6a4809cc854299abede03422ff1327e', '车位主1', '13800000002', 'OWNER'),
+('driver01', '7c6f2a457f9e206677fcb9e1d9b26911f3847da3ab5fed27b523aea7dd879811', '车主1', '13800000003', 'CAR_OWNER');
 
 INSERT INTO ParkingLots (lot_name, address, total_spaces, open_time, close_time, description)
 VALUES ('中心广场停车场', 'XX路100号', 200, '06:00:00', '23:00:00', '示例停车场');

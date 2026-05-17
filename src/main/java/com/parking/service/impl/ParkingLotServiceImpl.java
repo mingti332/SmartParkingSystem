@@ -71,6 +71,51 @@ public class ParkingLotServiceImpl implements ParkingLotService {
     }
 
     @Override
+    public void updateLotField(Long lotId, String fieldName, String fieldValue) throws SQLException {
+        if (lotId == null) {
+            throw new ServiceException("停车场ID不能为空");
+        }
+        if (fieldName == null || fieldName.isBlank()) {
+            throw new ServiceException("字段名不能为空");
+        }
+        ParkingLot existing = parkingLotDao.findById(lotId);
+        if (existing == null) {
+            throw new ServiceException("未找到对应停车场");
+        }
+        String field = fieldName.trim().toLowerCase();
+        Object value = fieldValue == null ? "" : fieldValue.trim();
+        switch (field) {
+            case "lot_name":
+                if (value.toString().isEmpty()) throw new ServiceException("停车场名称不能为空");
+                break;
+            case "address":
+                if (value.toString().isEmpty()) throw new ServiceException("停车场地址不能为空");
+                break;
+            case "total_spaces":
+                int total = Integer.parseInt(value.toString());
+                if (total <= 0) throw new ServiceException("总车位数必须大于0");
+                value = total;
+                break;
+            case "open_time":
+            case "close_time":
+                if (!value.toString().isEmpty()) {
+                    String val = value.toString().trim();
+                    if (val.matches("\\d{1,2}")) {
+                        int hour = Integer.parseInt(val);
+                        if (hour == 24) hour = 0;
+                        value = java.sql.Time.valueOf(java.time.LocalTime.of(hour, 0));
+                    } else {
+                        value = java.sql.Time.valueOf(java.time.LocalTime.parse(val));
+                    }
+                }
+                break;
+        }
+        if (parkingLotDao.updateLotField(lotId, fieldName, value) == 0) {
+            throw new ServiceException("未找到对应停车场");
+        }
+    }
+
+    @Override
     public List<ParkingLot> queryLots(String keyword, int pageNo, int pageSize) throws SQLException {
         String kw = keyword == null ? "" : keyword.trim();
         if (!kw.isEmpty() && kw.matches("\\d+")) {

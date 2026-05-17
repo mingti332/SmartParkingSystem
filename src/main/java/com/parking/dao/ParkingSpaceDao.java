@@ -15,6 +15,8 @@ public interface ParkingSpaceDao {
 
     int deleteById(Long spaceId) throws SQLException;
 
+    int updateSpaceField(Long spaceId, String fieldName, Object value) throws SQLException;
+
     List<ParkingSpace> search(String keyword, String status, Long lotId, int pageNo, int pageSize) throws SQLException;
 
     List<ParkingSpace> findByOwner(Long ownerId, int pageNo, int pageSize) throws SQLException;

@@ -18,6 +18,8 @@ public interface UserDao {
 
     int updateStatus(Long userId, Integer status) throws SQLException;
 
+    int updateUserField(Long userId, String fieldName, Object value) throws SQLException;
+
     boolean existsById(Long userId) throws SQLException;
 
     boolean hasOwnedSpaces(Long userId) throws SQLException;

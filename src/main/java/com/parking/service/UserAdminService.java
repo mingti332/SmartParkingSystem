@@ -14,5 +14,7 @@ public interface UserAdminService {
 
     void resetPassword(Long userId, String newPassword) throws SQLException;
 
+    void updateUserField(Long userId, String fieldName, String fieldValue) throws SQLException;
+
     void deleteUser(Long userId) throws SQLException;
 }

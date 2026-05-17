@@ -14,6 +14,8 @@ public interface ReservationDao {
 
     int cancelById(Connection conn, Long reservationId, Long userId) throws SQLException;
 
+    int updateStatus(Connection conn, Long reservationId, String status) throws SQLException;
+
     Reservation findById(Connection conn, Long reservationId) throws SQLException;
 
     List<Reservation> findByUser(Long userId, int pageNo, int pageSize) throws SQLException;

@@ -66,4 +66,10 @@ public class ParkingLot {
     public void setDescription(String description) {
         this.description = description;
     }
+
+    public boolean is24Hour() {
+        return openTime != null && closeTime != null
+                && openTime.equals(LocalTime.MIDNIGHT)
+                && closeTime.equals(LocalTime.MIDNIGHT);
+    }
 }

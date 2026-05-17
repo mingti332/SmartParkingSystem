@@ -12,5 +12,7 @@ public interface ParkingLotService {
 
     void removeLot(Long lotId) throws SQLException;
 
+    void updateLotField(Long lotId, String fieldName, String fieldValue) throws SQLException;
+
     List<ParkingLot> queryLots(String keyword, int pageNo, int pageSize) throws SQLException;
 }

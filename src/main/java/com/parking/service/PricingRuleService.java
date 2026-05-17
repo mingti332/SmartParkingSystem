@@ -12,5 +12,7 @@ public interface PricingRuleService {
 
     void removeRule(Long ruleId) throws SQLException;
 
+    void updateRuleField(Long ruleId, String fieldName, String fieldValue) throws SQLException;
+
     List<PricingRule> queryRules(String keyword, String chargeType, Integer status, int pageNo, int pageSize) throws SQLException;
 }

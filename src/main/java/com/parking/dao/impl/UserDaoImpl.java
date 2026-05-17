@@ -152,6 +152,54 @@ public class UserDaoImpl implements UserDao {
     }
 
     @Override
+    public int updateUserField(Long userId, String fieldName, Object value) throws SQLException {
+        if (fieldName == null || fieldName.isBlank()) {
+            throw new SQLException("Field name is required");
+        }
+        String column;
+        switch (fieldName.trim().toLowerCase()) {
+            case "username":
+                column = "username";
+                break;
+            case "real_name":
+                column = "real_name";
+                break;
+            case "phone":
+                column = "phone";
+                break;
+            case "role":
+                column = "role";
+                break;
+            case "status":
+                column = "status";
+                break;
+            case "create_time":
+                column = "create_time";
+                break;
+            default:
+                throw new SQLException("Unsupported user field: " + fieldName);
+        }
+
+        String sql = "UPDATE Users SET " + column + " = ? WHERE user_id = ?";
+        try (Connection conn = DbUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            if ("create_time".equals(column)) {
+                if (value == null) {
+                    ps.setTimestamp(1, null);
+                } else if (value instanceof Timestamp) {
+                    ps.setTimestamp(1, (Timestamp) value);
+                } else {
+                    throw new SQLException("create_time requires Timestamp value");
+                }
+            } else {
+                ps.setObject(1, value);
+            }
+            ps.setLong(2, userId);
+            return ps.executeUpdate();
+        }
+    }
+
+    @Override
     public boolean existsById(Long userId) throws SQLException {
         String sql = "SELECT 1 FROM Users WHERE user_id = ? LIMIT 1";
         try (Connection conn = DbUtil.getConnection();

@@ -55,6 +55,60 @@ public class ParkingSpaceServiceImpl implements ParkingSpaceService {
     }
 
     @Override
+    public void updateSpaceField(Long spaceId, String fieldName, String fieldValue) throws SQLException {
+        if (spaceId == null) {
+            throw new ServiceException("车位ID不能为空");
+        }
+        if (fieldName == null || fieldName.isBlank()) {
+            throw new ServiceException("字段名不能为空");
+        }
+        ParkingSpace existing = parkingSpaceDao.findById(spaceId);
+        if (existing == null) {
+            throw new ServiceException("未找到对应车位");
+        }
+        String field = fieldName.trim().toLowerCase();
+        Object value = fieldValue == null ? "" : fieldValue.trim();
+        switch (field) {
+            case "lot_id":
+                long lotId = Long.parseLong(value.toString());
+                ParkingLot lot = parkingLotDao.findById(lotId);
+                if (lot == null) throw new ServiceException("停车场ID不存在");
+                value = lotId;
+                break;
+            case "owner_id":
+                long ownerId = Long.parseLong(value.toString());
+                User u = userDao.findById(ownerId);
+                if (u == null) throw new ServiceException("所有者ID不存在");
+                if (!"OWNER".equalsIgnoreCase(u.getRole() == null ? "" : u.getRole().trim())) {
+                    throw new ServiceException("用户不是车位所有者");
+                }
+                value = ownerId;
+                break;
+            case "space_number":
+                if (value.toString().isEmpty()) throw new ServiceException("车位编号不能为空");
+                break;
+            case "type":
+                if (value.toString().isEmpty()) throw new ServiceException("车位类型不能为空");
+                if (!"GROUND".equalsIgnoreCase(value.toString()) && !"UNDERGROUND".equalsIgnoreCase(value.toString())) {
+                    throw new ServiceException("类型只能为地上或地下");
+                }
+                break;
+            case "status":
+                if (value.toString().isEmpty()) throw new ServiceException("车位状态不能为空");
+                break;
+            case "share_start_time":
+            case "share_end_time":
+                if (!value.toString().isEmpty()) {
+                    value = java.sql.Time.valueOf(java.time.LocalTime.parse(value.toString()));
+                }
+                break;
+        }
+        if (parkingSpaceDao.updateSpaceField(spaceId, fieldName, value) == 0) {
+            throw new ServiceException("未找到对应车位");
+        }
+    }
+
+    @Override
     public List<ParkingSpace> querySpaces(String keyword, String status, Long lotId, int pageNo, int pageSize) throws SQLException {
         return parkingSpaceDao.search(keyword, status, lotId, pageNo, pageSize);
     }

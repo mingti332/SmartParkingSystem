@@ -1,11 +1,14 @@
 package com.parking.app;
 
+import com.parking.dao.ParkingSpaceDao;
+import com.parking.dao.impl.ParkingSpaceDaoImpl;
 import com.parking.entity.*;
 import com.parking.service.*;
 import com.parking.service.impl.*;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
+import javafx.geometry.Side;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.*;
@@ -317,7 +320,7 @@ public class DashboardFactory {
 
         TabPane tabs = new TabPane();
         Tab t1 = new Tab("我的车位", spacesTab); t1.setClosable(false);
-        Tab t2 = new Tab("名下预约", resvTab); t2.setClosable(false);
+        Tab t2 = new Tab("名下车位预约信息", resvTab); t2.setClosable(false);
         Tab t3 = new Tab("收益明细", revenueTab); t3.setClosable(false);
         tabs.getTabs().addAll(t1, t2, t3);
 
@@ -356,25 +359,39 @@ public class DashboardFactory {
             cb.setItems(backingList);
             cb.getEditor().textProperty().addListener((obs, oldVal, newVal) -> {
                 String text = (newVal == null) ? "" : newVal;
+                if (text.equals(oldVal)) return;
+                // 文本匹配当前选中项 → 程序化setValue或用户选择，展示全部条目
+                if (text.equals(cb.getValue())) {
+                    if (!backingList.equals(items)) {
+                        backingList.setAll(items);
+                    }
+                    return;
+                }
                 if (text.isEmpty()) {
-                    backingList.setAll(items);
+                    if (!backingList.equals(items)) {
+                        backingList.setAll(items);
+                    }
                 } else {
                     String filter = text.toLowerCase();
                     java.util.List<String> filtered = new java.util.ArrayList<>();
                     for (String item : items) {
                         if (item.toLowerCase().contains(filter)) filtered.add(item);
                     }
-                    backingList.setAll(filtered);
+                    if (!backingList.equals(filtered)) {
+                        backingList.setAll(filtered);
+                    }
                 }
             });
             return cb;
         };
 
-        // Helper to resolve lot ID from ComboBox (tries getValue, then editor text fuzzy match)
+        // Helper to resolve lot ID from ComboBox: getValue valid only if matches editor text
         java.util.function.Function<ComboBox<String>, Long> resolveLotId = (cb) -> {
             String sel = cb.getValue();
-            if (sel != null && lotNameToId.containsKey(sel)) return lotNameToId.get(sel);
             String editorText = cb.getEditor().getText();
+            if (sel != null && sel.equals(editorText) && lotNameToId.containsKey(sel)) {
+                return lotNameToId.get(sel);
+            }
             if (editorText != null && !editorText.isEmpty()) {
                 for (String key : lotNameToId.keySet()) {
                     if (key.toLowerCase().contains(editorText.toLowerCase())) return lotNameToId.get(key);
@@ -427,7 +444,7 @@ public class DashboardFactory {
         queryBtn.setOnAction(e -> {
             try {
                 Long lid = resolveLotId.apply(queryLotCombo);
-                if (lid == null) { out.appendText("请从下拉列表中选择有效的停车场\n"); return; }
+                if (lid == null) { out.appendText("查询失败：请从下拉列表中选择有效的停车场\n"); return; }
                 List<ParkingSpace> freeSpaces = parkingSpaceService.querySpaces("", "FREE", lid, 1, 500);
                 List<ParkingSpace> ground = new java.util.ArrayList<>();
                 List<ParkingSpace> under = new java.util.ArrayList<>();
@@ -436,9 +453,11 @@ public class DashboardFactory {
                     else under.add(s);
                 }
                 groundTable.setItems(FXCollections.observableArrayList(ground));
+                groundTable.setPlaceholder(ground.isEmpty() ? new Label("暂无可用地上车位") : null);
                 underTable.setItems(FXCollections.observableArrayList(under));
+                underTable.setPlaceholder(under.isEmpty() ? new Label("暂无可用地下车位") : null);
                 out.appendText("停车场: " + queryLotCombo.getEditor().getText() + "  地上空闲=" + ground.size() + "个  地下空闲=" + under.size() + "个\n");
-            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+            } catch (Exception ex) { out.appendText("查询失败：" + formatError(ex) + "\n"); }
         });
 
         // === Reserve section: 4 dropdowns + 1 button ===
@@ -449,8 +468,13 @@ public class DashboardFactory {
         resvTypeCombo.setValue("地上");
         resvTypeCombo.setPrefWidth(100);
 
+        ComboBox<String> dateCombo = new ComboBox<>(FXCollections.observableArrayList("今天", "明天"));
+        dateCombo.setValue("今天");
+        dateCombo.setPrefWidth(80);
+
         java.util.List<String> hourItems = new java.util.ArrayList<>();
         for (int h = 0; h < 24; h++) hourItems.add(String.format("%02d:00", h));
+        hourItems.add("24:00");
 
         ComboBox<String> startTimeCombo = new ComboBox<>(FXCollections.observableArrayList(hourItems));
         startTimeCombo.setValue("08:00");
@@ -464,40 +488,93 @@ public class DashboardFactory {
         reserveBtn.setOnAction(e -> {
             try {
                 Long lid = resolveLotId.apply(resvLotCombo);
-                if (lid == null) { out.appendText("请从下拉列表中选择有效的停车场\n"); return; }
+                if (lid == null) { out.appendText("预约失败：请从下拉列表中选择有效的停车场\n"); return; }
                 String typeCode = spaceTypeCode(resvTypeCombo.getValue());
-                LocalTime st = LocalTime.parse(startTimeCombo.getValue());
-                LocalTime et = LocalTime.parse(endTimeCombo.getValue());
-                LocalDate today = LocalDate.now();
-                LocalDateTime startDt = LocalDateTime.of(today, st);
-                LocalDateTime endDt = LocalDateTime.of(today, et);
-                if (!endDt.isAfter(startDt)) endDt = endDt.plusDays(1);
+                LocalTime st = parseReserveTime(startTimeCombo.getValue());
+                LocalTime et = parseReserveTime(endTimeCombo.getValue());
+                LocalDate reserveDate = "明天".equals(dateCombo.getValue())
+                    ? LocalDate.now().plusDays(1)
+                    : LocalDate.now();
+                LocalDateTime now = LocalDateTime.now();
+                LocalDateTime startDt = LocalDateTime.of(reserveDate, st);
+                LocalDateTime endDt = LocalDateTime.of(reserveDate, et);
+
+                // 校验：仅当天预约时检查开始时间是否已过
+                if ("今天".equals(dateCombo.getValue()) && startDt.isBefore(now.minusMinutes(5))) {
+                    out.appendText("预约失败：开始时间 " + startTimeCombo.getValue() + " 已过"
+                        + "（当前 " + now.toLocalTime().toString().substring(0, 5) + "），请选择稍后的时间\n");
+                    return;
+                }
+
+                // 跨日处理：结束时间不晚于开始时间 → 视为次日
+                if (!endDt.isAfter(startDt)) {
+                    endDt = endDt.plusDays(1);
+                    out.appendText("（提示：结束时间不晚于开始时间，已自动视为次日预约）\n");
+                }
+
+                // 校验停车场营业时间
+                List<ParkingLot> lots = parkingLotService.queryLots(String.valueOf(lid), 1, 1);
+                ParkingLot lot = lots.isEmpty() ? null : lots.get(0);
+                if (lot != null && !lot.is24Hour()) {
+                    LocalTime openTime = lot.getOpenTime();
+                    LocalTime closeTime = lot.getCloseTime();
+                    if (openTime != null && closeTime != null) {
+                        LocalTime startLocal = startDt.toLocalTime();
+                        LocalTime endLocal = endDt.toLocalTime();
+                        boolean sameDay = startDt.toLocalDate().equals(endDt.toLocalDate());
+                        if (startLocal.isBefore(openTime)) {
+                            out.appendText("预约失败：开始时间 " + startTimeCombo.getValue()
+                                + " 早于停车场营业开始时间 " + openTime
+                                + "（停车场：" + lot.getLotName() + "）\n");
+                            return;
+                        }
+                        if (sameDay && endLocal.isAfter(closeTime)) {
+                            out.appendText("预约失败：结束时间 " + endTimeCombo.getValue()
+                                + " 晚于停车场营业结束时间 " + closeTime
+                                + "（停车场：" + lot.getLotName() + "）\n");
+                            return;
+                        }
+                    }
+                }
 
                 ReservationService.AutoReserveResult result = reservationService.reserveByLotAndType(
                         user.getUserId(), lid, typeCode, startDt, endDt);
 
-                List<ParkingLot> lots = parkingLotService.queryLots(String.valueOf(lid), 1, 1);
-                String lotName = lots.isEmpty() ? String.valueOf(lid) : lots.get(0).getLotName();
-                String address = lots.isEmpty() ? "" : lots.get(0).getAddress();
+                String lotName = lot != null ? lot.getLotName() : String.valueOf(lid);
+                String address = lot != null ? lot.getAddress() : "";
 
                 out.clear();
                 out.appendText("预约成功!\n");
                 out.appendText("预约ID: " + result.getReservationId() + "\n");
                 out.appendText("分配车位ID: " + result.getSpaceId() + "\n");
                 out.appendText("停车场: " + lotName + "\n");
-                out.appendText("地址: " + address + "\n");
+                out.appendText("地址: " + (address != null ? address : "") + "\n");
+                out.appendText("日期: " + dateCombo.getValue() + " (" + reserveDate + ")\n");
                 out.appendText("类型: " + resvTypeCombo.getValue() + "\n");
                 out.appendText("时间: " + fmtDateTime(startDt) + " ~ " + fmtDateTime(endDt) + "\n");
-            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+            } catch (Exception ex) { out.appendText("预约失败：" + formatError(ex) + "\n"); }
         });
 
         // === My Reservations table ===
+        // Lookup maps for enrichment — populated on refresh
+        java.util.Map<Long, String> spaceTypeMap = new java.util.HashMap<>();
+        java.util.Map<Long, String> spaceLotMap = new java.util.HashMap<>();
+        ParkingSpaceDao parkingSpaceDao = new ParkingSpaceDaoImpl();
+
         TableView<Reservation> myResvTable = new TableView<>();
         myResvTable.setEditable(false);
         TableColumn<Reservation, String> mrId = new TableColumn<>("预约ID");
         mrId.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getReservationId()))); mrId.setSortable(false); mrId.setPrefWidth(60);
         TableColumn<Reservation, String> mrSpace = new TableColumn<>("车位ID");
         mrSpace.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getSpaceId()))); mrSpace.setSortable(false); mrSpace.setPrefWidth(60);
+        TableColumn<Reservation, String> mrLot = new TableColumn<>("停车场");
+        mrLot.setCellValueFactory(c -> new SimpleStringProperty(
+            spaceLotMap.getOrDefault(c.getValue().getSpaceId(), "")));
+        mrLot.setSortable(false); mrLot.setPrefWidth(120);
+        TableColumn<Reservation, String> mrType = new TableColumn<>("类型");
+        mrType.setCellValueFactory(c -> new SimpleStringProperty(
+            spaceTypeMap.getOrDefault(c.getValue().getSpaceId(), "")));
+        mrType.setSortable(false); mrType.setPrefWidth(60);
         TableColumn<Reservation, String> mrStart = new TableColumn<>("开始");
         mrStart.setCellValueFactory(c -> new SimpleStringProperty(fmtDateTime(c.getValue().getReserveStart()))); mrStart.setSortable(false); mrStart.setPrefWidth(130);
         TableColumn<Reservation, String> mrEnd = new TableColumn<>("结束");
@@ -506,7 +583,7 @@ public class DashboardFactory {
         mrStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getStatus())); mrStatus.setSortable(false); mrStatus.setPrefWidth(70);
         TableColumn<Reservation, String> mrCreate = new TableColumn<>("创建时间");
         mrCreate.setCellValueFactory(c -> new SimpleStringProperty(fmtDateTime(c.getValue().getCreateTime()))); mrCreate.setSortable(false); mrCreate.setPrefWidth(130);
-        myResvTable.getColumns().addAll(mrId, mrSpace, mrStart, mrEnd, mrStatus, mrCreate);
+        myResvTable.getColumns().addAll(mrId, mrSpace, mrLot, mrType, mrStart, mrEnd, mrStatus, mrCreate);
         myResvTable.setFixedCellSize(26);
         double mrh = myResvTable.getFixedCellSize() * 8 + 34;
         myResvTable.setPrefHeight(mrh); myResvTable.setMinHeight(mrh); myResvTable.setMaxHeight(mrh);
@@ -515,8 +592,41 @@ public class DashboardFactory {
         myResvBtn.setOnAction(e -> {
             try {
                 List<Reservation> rows = reservationService.getMyReservations(user.getUserId(), 1, 100);
+
+                // Build enrichment maps
+                spaceTypeMap.clear();
+                spaceLotMap.clear();
+                java.util.Map<Long, String> lotCache = new java.util.HashMap<>();
+                int groundCount = 0;
+                int underCount = 0;
+                for (Reservation r : rows) {
+                    Long sid = r.getSpaceId();
+                    if (sid == null || spaceTypeMap.containsKey(sid)) continue;
+                    try {
+                        ParkingSpace sp = parkingSpaceDao.findById(sid);
+                        if (sp != null) {
+                            String typeLabel = spaceTypeLabel(sp.getType());
+                            spaceTypeMap.put(sid, typeLabel);
+                            if ("GROUND".equalsIgnoreCase(sp.getType())) groundCount++;
+                            else if ("UNDERGROUND".equalsIgnoreCase(sp.getType())) underCount++;
+
+                            Long lid = sp.getLotId();
+                            if (lid != null) {
+                                String lotName = lotCache.get(lid);
+                                if (lotName == null) {
+                                    List<ParkingLot> ll = parkingLotService.queryLots(String.valueOf(lid), 1, 1);
+                                    lotName = ll.isEmpty() ? String.valueOf(lid) : ll.get(0).getLotName();
+                                    lotCache.put(lid, lotName);
+                                }
+                                spaceLotMap.put(sid, lotName);
+                            }
+                        }
+                    } catch (Exception ignore) { /* skip failed lookup */ }
+                }
+
                 myResvTable.setItems(FXCollections.observableArrayList(rows));
-            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+                out.appendText("我的预约共" + rows.size() + "条，地上=" + groundCount + " 地下=" + underCount + "\n");
+            } catch (Exception ex) { out.appendText("刷新失败：" + formatError(ex) + "\n"); }
         });
 
         Button cancelBtn = new Button("取消预约");
@@ -530,16 +640,17 @@ public class DashboardFactory {
                 long rid = Long.parseLong(input.get().trim());
                 reservationService.cancel(rid, user.getUserId());
                 out.appendText("取消成功，预约ID=" + rid + "\n");
-            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+            } catch (NumberFormatException ex) { out.appendText("取消失败：请输入有效的数字格式预约ID\n"); }
+              catch (Exception ex) { out.appendText("取消失败：" + formatError(ex) + "\n"); }
         });
 
         Button lotInfoBtn = new Button("停车场信息");
         lotInfoBtn.setOnAction(e -> {
             try {
                 Long lid = resolveLotId.apply(resvLotCombo);
-                if (lid == null) { out.appendText("请先在预约区选择停车场\n"); return; }
+                if (lid == null) { out.appendText("查询失败：请先在预约区选择停车场\n"); return; }
                 List<ParkingLot> lots = parkingLotService.queryLots(String.valueOf(lid), 1, 1);
-                if (lots.isEmpty()) { out.appendText("未找到停车场\n"); return; }
+                if (lots.isEmpty()) { out.appendText("查询失败：未找到该停车场信息\n"); return; }
                 ParkingLot lot = lots.get(0);
                 List<ParkingSpace> spaces = loadAllSpacesByLot(lid);
                 long ground = spaces.stream().filter(s -> "GROUND".equalsIgnoreCase(s.getType())).count();
@@ -553,7 +664,7 @@ public class DashboardFactory {
                 out.appendText("营业时间: " + lot.getOpenTime() + "~" + lot.getCloseTime() + "\n");
                 out.appendText("总车位数: " + lot.getTotalSpaces() + "\n");
                 out.appendText("地上=" + ground + " 地下=" + under + " 空闲=" + free + " 已预约=" + reserved + " 占用=" + occupied + "\n");
-            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+            } catch (Exception ex) { out.appendText("查询失败：" + formatError(ex) + "\n"); }
         });
 
         HBox queryTop = new HBox(8, new Label("停车场"), queryLotCombo, queryBtn);
@@ -562,13 +673,14 @@ public class DashboardFactory {
         Label underLabel = new Label("地下可用车位");
         underLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #FF9800;");
         HBox resvTop = new HBox(8, new Label("停车场"), resvLotCombo, new Label("类型"), resvTypeCombo,
+                new Label("日期"), dateCombo,
                 new Label("开始"), startTimeCombo, new Label("结束"), endTimeCombo, reserveBtn);
         HBox actionRow = new HBox(8, myResvBtn, cancelBtn, lotInfoBtn);
 
         VBox body = new VBox(10,
                 sectionBox("查询可用车位", queryTop, groundLabel, groundTable, underLabel, underTable),
                 sectionBox("提交预约", resvTop),
-                sectionBox("预约结果", out),
+                sectionBox("消息输出", out),
                 sectionBox("我的预约", actionRow, myResvTable));
         body.setPadding(new Insets(10));
 
@@ -583,41 +695,157 @@ public class DashboardFactory {
     }
 
     private Tab parkingTab(User user) {
-        TextField reservationId = new TextField();
-        reservationId.setPromptText("预约ID（可选，无预约可留空）");
-        reservationId.setPrefWidth(320);
-        TextField lotId = new TextField();
-        lotId.setPromptText("停车场ID（必填）");
-        lotId.setPrefWidth(190);
-        ComboBox<String> entryType = new ComboBox<>(FXCollections.observableArrayList("地上", "地下"));
-        entryType.setValue("地上");
-        entryType.setPrefWidth(110);
-        TextField recordId = new TextField();
-        recordId.setPromptText("停车记录ID");
         TextArea out = new TextArea();
         out.setEditable(false);
-        out.setPrefRowCount(4);
+        out.setPrefRowCount(5);
+
+        // Load all parking lots for filterable dropdown
+        java.util.List<String> allLotItems = new java.util.ArrayList<>();
+        java.util.Map<String, Long> lotNameToId = new java.util.HashMap<>();
+        try {
+            List<ParkingLot> lots = parkingLotService.queryLots("", 1, 500);
+            for (ParkingLot lot : lots) {
+                String label = lot.getLotName() + " (ID=" + lot.getLotId() + ")";
+                allLotItems.add(label);
+                lotNameToId.put(label, lot.getLotId());
+            }
+        } catch (Exception ex) { /* ignore */ }
+
+        // Filterable ComboBox for parking lot
+        java.util.function.Function<java.util.List<String>, ComboBox<String>> newFilterableCombo = (items) -> {
+            ComboBox<String> cb = new ComboBox<>();
+            cb.setEditable(true);
+            cb.setPrefWidth(240);
+            cb.setVisibleRowCount(8);
+            javafx.collections.ObservableList<String> backingList = FXCollections.observableArrayList(items);
+            cb.setItems(backingList);
+            cb.getEditor().textProperty().addListener((obs, oldVal, newVal) -> {
+                String text = (newVal == null) ? "" : newVal;
+                if (text.equals(oldVal)) return;
+                if (text.equals(cb.getValue())) {
+                    if (!backingList.equals(items)) backingList.setAll(items);
+                    return;
+                }
+                if (text.isEmpty()) {
+                    if (!backingList.equals(items)) backingList.setAll(items);
+                } else {
+                    String filter = text.toLowerCase();
+                    java.util.List<String> filtered = new java.util.ArrayList<>();
+                    for (String item : items) {
+                        if (item.toLowerCase().contains(filter)) filtered.add(item);
+                    }
+                    if (!backingList.equals(filtered)) backingList.setAll(filtered);
+                }
+            });
+            return cb;
+        };
+
+        java.util.function.Function<ComboBox<String>, Long> resolveId = (cb) -> {
+            String sel = cb.getValue();
+            String editorText = cb.getEditor().getText();
+            if (sel != null && sel.equals(editorText) && lotNameToId.containsKey(sel)) return lotNameToId.get(sel);
+            if (editorText != null && !editorText.isEmpty()) {
+                for (String key : lotNameToId.keySet()) {
+                    if (key.toLowerCase().contains(editorText.toLowerCase())) return lotNameToId.get(key);
+                }
+            }
+            return null;
+        };
+
+        ComboBox<String> entryLotCombo = newFilterableCombo.apply(allLotItems);
+        if (!allLotItems.isEmpty()) entryLotCombo.setValue(allLotItems.get(0));
+
+        ComboBox<String> entryTypeCombo = new ComboBox<>(FXCollections.observableArrayList("地上", "地下"));
+        entryTypeCombo.setValue("地上");
+        entryTypeCombo.setPrefWidth(80);
 
         Button entry = new Button("入场登记");
         entry.setMinWidth(110);
         entry.setOnAction(e -> {
             try {
-                Long reserveId = null;
-                String reserveText = reservationId.getText() == null ? "" : reservationId.getText().trim();
-                if (!reserveText.isEmpty()) reserveId = Long.parseLong(reserveText);
+                Long lid = resolveId.apply(entryLotCombo);
+                if (lid == null) { out.appendText("入场失败：请选择有效的停车场\n"); return; }
+                String typeCode = spaceTypeCode(entryTypeCombo.getValue());
+                LocalDateTime now = LocalDateTime.now();
+
+                // 1. 检查是否有未出场记录
+                List<ParkingRecord> myRecords = parkingRecordService.getMyParkingRecords(user.getUserId(), 1, 100);
+                ParkingRecord activeRecord = null;
+                for (ParkingRecord r : myRecords) {
+                    if (r.getExitTime() == null) { activeRecord = r; break; }
+                }
+                if (activeRecord != null) {
+                    out.appendText("入场失败：您已有进行中的入场记录（记录ID=" + activeRecord.getRecordId()
+                        + "，入场时间=" + fmtDateTime(activeRecord.getEntryTime()) + "），请先出场后再入场\n");
+                    return;
+                }
+
+                // 2. 检查是否有该停车场当前时段的预约
+                List<Reservation> reservations = reservationService.getMyReservations(user.getUserId(), 1, 100);
+                Reservation matchedResv = null;
+                for (Reservation r : reservations) {
+                    if (("PENDING".equals(r.getStatus()) || "ACTIVE".equals(r.getStatus()))
+                        && r.getReserveStart().isBefore(now.plusHours(1))
+                        && r.getReserveEnd().isAfter(now)) {
+                        List<ParkingSpace> spaces = parkingSpaceService.querySpaces(
+                            String.valueOf(r.getSpaceId()), null, null, 1, 1);
+                        if (!spaces.isEmpty() && spaces.get(0).getLotId().equals(lid)) {
+                            matchedResv = r;
+                            break;
+                        }
+                    }
+                }
+
+                if (matchedResv != null) {
+                    ParkingRecordService.AutoEntryResult result = parkingRecordService.entryByLotAndType(
+                        matchedResv.getReservationId(), user.getUserId(), lid, typeCode, now);
+                    out.appendText("入场成功（预约入场）\n");
+                    out.appendText("停车记录ID: " + result.getRecordId() + "\n");
+                    out.appendText("分配车位ID: " + result.getSpaceId() + "\n");
+                    out.appendText("预约ID: " + matchedResv.getReservationId() + "\n");
+                    out.appendText("入场时间: " + fmtDateTime(now) + "\n");
+                    return;
+                }
+
+                // 3. 无预约 → 检查空闲车位
+                List<ParkingSpace> freeSpaces = parkingSpaceService.querySpaces("", "FREE", lid, 1, 500);
+                ParkingSpace targetSpace = null;
+                for (ParkingSpace s : freeSpaces) {
+                    if (typeCode.equals(s.getType())) { targetSpace = s; break; }
+                }
+                if (targetSpace == null) {
+                    out.appendText("入场失败：该停车场当前无空闲" + entryTypeCombo.getValue() + "车位\n");
+                    return;
+                }
                 ParkingRecordService.AutoEntryResult result = parkingRecordService.entryByLotAndType(
-                        reserveId, user.getUserId(), requireLong(lotId, "停车场ID"),
-                        spaceTypeCode(entryType.getValue()), LocalDateTime.now());
-                out.appendText("入场登记成功，停车记录ID=" + result.getRecordId() + "，分配车位ID=" + result.getSpaceId() + "\n");
-            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+                    null, user.getUserId(), lid, typeCode, now);
+                out.appendText("入场成功（空闲车位入场）\n");
+                out.appendText("停车记录ID: " + result.getRecordId() + "\n");
+                out.appendText("分配车位ID: " + result.getSpaceId() + "\n");
+                out.appendText("入场时间: " + fmtDateTime(now) + "\n");
+            } catch (Exception ex) { out.appendText("入场失败：" + formatError(ex) + "\n"); }
         });
 
-        Button exitAndPay = new Button("出场并支付");
-        exitAndPay.setOnAction(e -> {
+        Button exitBtn = new Button("出场并支付");
+        exitBtn.setOnAction(e -> {
             try {
-                BigDecimal fee = parkingRecordService.exitAndPay(requireLong(recordId, "停车记录ID"), "WECHAT");
-                out.appendText("支付成功，费用=" + fee + "\n");
-            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+                List<ParkingRecord> myRecords = parkingRecordService.getMyParkingRecords(user.getUserId(), 1, 100);
+                ParkingRecord activeRecord = null;
+                for (ParkingRecord r : myRecords) {
+                    if (r.getExitTime() == null) { activeRecord = r; break; }
+                }
+                if (activeRecord == null) {
+                    out.appendText("出场失败：未找到进行中的入场记录\n");
+                    return;
+                }
+                BigDecimal fee = parkingRecordService.exitAndPay(activeRecord.getRecordId(), "WECHAT");
+                out.clear();
+                out.appendText("出场成功！\n");
+                out.appendText("记录ID: " + activeRecord.getRecordId() + "\n");
+                out.appendText("入场时间: " + fmtDateTime(activeRecord.getEntryTime()) + "\n");
+                out.appendText("出场时间: " + fmtDateTime(LocalDateTime.now()) + "\n");
+                out.appendText("费用: " + fee + " 元\n");
+            } catch (Exception ex) { out.appendText("出场失败：" + formatError(ex) + "\n"); }
         });
 
         // Parking records table
@@ -642,12 +870,12 @@ public class DashboardFactory {
         double rth = recordsTable.getFixedCellSize() * 8 + 34;
         recordsTable.setPrefHeight(rth); recordsTable.setMinHeight(rth); recordsTable.setMaxHeight(rth);
 
-        Button myRecords = new Button("我的停车记录");
+        Button myRecords = new Button("刷新停车记录");
         myRecords.setOnAction(e -> {
             try {
                 List<ParkingRecord> rows = parkingRecordService.getMyParkingRecords(user.getUserId(), 1, 100);
                 recordsTable.setItems(FXCollections.observableArrayList(rows));
-            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+            } catch (Exception ex) { out.appendText("刷新失败：" + formatError(ex) + "\n"); }
         });
 
         // Payment records table
@@ -670,19 +898,18 @@ public class DashboardFactory {
         double pth = paymentsTable.getFixedCellSize() * 8 + 34;
         paymentsTable.setPrefHeight(pth); paymentsTable.setMinHeight(pth); paymentsTable.setMaxHeight(pth);
 
-        Button myPayments = new Button("我的支付记录");
+        Button myPayments = new Button("刷新支付记录");
         myPayments.setOnAction(e -> {
             try {
                 List<Map<String, Object>> rows = paymentService.getMyPayments(user.getUserId(), "", 1, 100);
                 paymentsTable.setItems(FXCollections.observableArrayList(rows));
-            } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
+            } catch (Exception ex) { out.appendText("刷新失败：" + formatError(ex) + "\n"); }
         });
 
         VBox body = new VBox(10,
                 sectionBox("停车入场",
-                        new HBox(8, reservationId, lotId, entryType, entry)),
-                sectionBox("出场缴费",
-                        new HBox(8, recordId, exitAndPay), out),
+                        new HBox(8, new Label("停车场"), entryLotCombo, new Label("类型"), entryTypeCombo, entry, exitBtn)),
+                sectionBox("消息输出", out),
                 sectionBox("停车记录", myRecords, recordsTable),
                 sectionBox("支付记录", myPayments, paymentsTable));
         body.setPadding(new Insets(10));
@@ -1010,10 +1237,14 @@ public class DashboardFactory {
         totalCol.setSortable(false);
         totalCol.setPrefWidth(90);
 
-        java.util.List<String> timeOpts = java.util.List.of("00:00", "06:00", "07:00", "08:00", "09:00", "10:00", "12:00", "14:00", "16:00", "18:00", "20:00", "22:00", "23:59");
+        java.util.List<String> timeOpts = java.util.List.of("00:00", "06:00", "07:00", "08:00", "09:00", "10:00", "12:00", "14:00", "16:00", "18:00", "20:00", "22:00", "23:59", "24:00");
 
         TableColumn<ParkingLot, String> openCol = new TableColumn<>("开放时间");
-        openCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getOpenTime() != null ? c.getValue().getOpenTime().toString() : ""));
+        openCol.setCellValueFactory(c -> {
+            ParkingLot lot = c.getValue();
+            if (lot.is24Hour()) return new SimpleStringProperty("24小时");
+            return new SimpleStringProperty(lot.getOpenTime() != null ? lot.getOpenTime().toString() : "");
+        });
         openCol.setCellFactory(ComboBoxTableCell.forTableColumn(FXCollections.observableArrayList(timeOpts)));
         openCol.setOnEditCommit(e -> {
             try {
@@ -1026,7 +1257,11 @@ public class DashboardFactory {
         openCol.setPrefWidth(90);
 
         TableColumn<ParkingLot, String> closeCol = new TableColumn<>("关闭时间");
-        closeCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getCloseTime() != null ? c.getValue().getCloseTime().toString() : ""));
+        closeCol.setCellValueFactory(c -> {
+            ParkingLot lot = c.getValue();
+            if (lot.is24Hour()) return new SimpleStringProperty("24小时");
+            return new SimpleStringProperty(lot.getCloseTime() != null ? lot.getCloseTime().toString() : "");
+        });
         closeCol.setCellFactory(ComboBoxTableCell.forTableColumn(FXCollections.observableArrayList(timeOpts)));
         closeCol.setOnEditCommit(e -> {
             try {
@@ -1125,6 +1360,20 @@ public class DashboardFactory {
         addOpen.setValue("08:00");
         ComboBox<String> addClose = new ComboBox<>(FXCollections.observableArrayList(timeOpts));
         addClose.setValue("22:00");
+        CheckBox add24h = new CheckBox("24小时营业");
+        add24h.setOnAction(e -> {
+            if (add24h.isSelected()) {
+                addOpen.setValue("00:00");
+                addClose.setValue("00:00");
+                addOpen.setDisable(true);
+                addClose.setDisable(true);
+            } else {
+                addOpen.setValue("08:00");
+                addClose.setValue("22:00");
+                addOpen.setDisable(false);
+                addClose.setDisable(false);
+            }
+        });
         TextField addDesc = new TextField();
 
         addName.setPromptText("停车场名称（必填）");
@@ -1146,8 +1395,8 @@ public class DashboardFactory {
                 lot.setLotName(addName.getText().trim());
                 lot.setAddress(addAddress.getText().trim());
                 lot.setTotalSpaces(requireInt(addTotal, "总车位数"));
-                lot.setOpenTime(LocalTime.parse(addOpen.getValue()));
-                lot.setCloseTime(LocalTime.parse(addClose.getValue()));
+                lot.setOpenTime(parseReserveTime(addOpen.getValue()));
+                lot.setCloseTime(parseReserveTime(addClose.getValue()));
                 String desc = addDesc.getText() == null ? "" : addDesc.getText().trim();
                 if (!desc.isEmpty()) lot.setDescription(desc);
                 long newId = parkingLotService.addLot(lot);
@@ -1155,6 +1404,9 @@ public class DashboardFactory {
                 addOperationLog(LOG_ADD, formatModuleLog("停车场管理", "新增停车场ID=" + newId));
                 addName.clear(); addAddress.clear(); addTotal.clear(); addDesc.clear();
                 addOpen.setValue("08:00"); addClose.setValue("22:00");
+                add24h.setSelected(false);
+                addOpen.setDisable(false);
+                addClose.setDisable(false);
                 pageNo[0] = 1;
                 reload.run();
             } catch (Exception ex) { out.appendText(formatError(ex) + "\n"); }
@@ -1172,6 +1424,7 @@ public class DashboardFactory {
                 new Label("总车位数"), addTotal,
                 new Label("开放时间"), addOpen,
                 new Label("关闭时间"), addClose,
+                add24h,
                 new Label("备注"), addDesc,
                 addBtn);
         addRow.setPrefWrapLength(1200);
@@ -2050,6 +2303,7 @@ public class DashboardFactory {
         StackedBarChart<String, Number> chart = new StackedBarChart<>(xAxis, yAxis);
         chart.setTitle("停车场预约次数排行（地上/地下）");
         chart.setAnimated(false);
+        chart.setLegendSide(Side.RIGHT);
         chart.setCategoryGap(20);
 
         java.util.Set<String> allLots = new java.util.LinkedHashSet<>();
@@ -2853,6 +3107,11 @@ public class DashboardFactory {
         if ("\u4fee\u6539".equals(label)) return "UPDATE"; // 修改
         if ("\u767b\u5f55".equals(label)) return "LOGIN"; // 登录
         return "ALL";
+    }
+
+    private LocalTime parseReserveTime(String value) {
+        if ("24:00".equals(value)) return LocalTime.of(0, 0);
+        return LocalTime.parse(value);
     }
 
     private String spaceTypeLabel(String code) {

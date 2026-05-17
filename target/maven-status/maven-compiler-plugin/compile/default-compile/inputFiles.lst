@@ -1,6 +1,8 @@
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\service\PricingRuleService.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\dao\UserDao.java
+E:\Vscode\SmartParkingSystem\src\main\java\com\parking\dao\OperationLogDao.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\service\impl\ReportServiceImpl.java
+E:\Vscode\SmartParkingSystem\src\main\java\com\parking\service\LoginFailResult.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\service\ParkingRecordService.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\service\pricing\FixedPricingStrategy.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\service\RevenueService.java
@@ -15,8 +17,10 @@ E:\Vscode\SmartParkingSystem\src\main\java\com\parking\service\impl\PricingRuleS
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\service\pricing\HourlyPricingStrategy.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\entity\PaymentRecord.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\service\impl\ParkingRecordServiceImpl.java
+E:\Vscode\SmartParkingSystem\src\main\java\com\parking\util\PasswordEncoder.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\dao\ParkingSpaceDao.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\dao\impl\PaymentRecordDaoImpl.java
+E:\Vscode\SmartParkingSystem\src\main\java\com\parking\dao\impl\OperationLogDaoImpl.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\dao\RevenueRecordDao.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\service\impl\RevenueServiceImpl.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\dao\impl\RevenueRecordDaoImpl.java
@@ -31,6 +35,7 @@ E:\Vscode\SmartParkingSystem\src\main\java\com\parking\dao\ParkingRecordDao.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\app\DashboardFactory.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\dao\impl\PricingRuleDaoImpl.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\dao\PaymentRecordDao.java
+E:\Vscode\SmartParkingSystem\src\main\java\com\parking\service\OperationLogService.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\service\ParkingLotService.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\service\ServiceException.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\entity\Reservation.java
@@ -48,6 +53,7 @@ E:\Vscode\SmartParkingSystem\src\main\java\com\parking\dao\ReportDao.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\dao\ReservationDao.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\entity\ParkingSpace.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\service\impl\UserAdminServiceImpl.java
+E:\Vscode\SmartParkingSystem\src\main\java\com\parking\service\impl\OperationLogServiceImpl.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\service\impl\ReservationServiceImpl.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\app\MainApp.java
 E:\Vscode\SmartParkingSystem\src\main\java\com\parking\service\UserAdminService.java
